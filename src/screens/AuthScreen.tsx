@@ -48,6 +48,12 @@ export default function AuthScreen() {
         const { data, error } = await supabase.auth.signUp({
           email: email.trim(),
           password,
+          options: {
+            // On web, redirect back to whatever URL the app is running on
+            // (works for both the Vercel production URL and preview URLs).
+            emailRedirectTo:
+              Platform.OS === 'web' ? window.location.origin : undefined,
+          },
         });
         if (error) {
           setMessage({ text: error.message, isError: true });

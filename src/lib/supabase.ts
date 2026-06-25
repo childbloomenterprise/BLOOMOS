@@ -15,6 +15,7 @@ import 'react-native-url-polyfill/auto';
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient } from '@supabase/supabase-js';
+import { Platform } from 'react-native';
 
 // These come from your .env file. Expo automatically makes any variable that
 // starts with EXPO_PUBLIC_ available here at build time — no extra setup.
@@ -38,8 +39,8 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     // Quietly refresh the login token in the background so users don't get
     // logged out mid-session.
     autoRefreshToken: true,
-    // This is for web apps that read the session from the URL. We're a mobile
-    // app, so we turn it off.
-    detectSessionInUrl: false,
+    // On web: read the auth token from the URL after email confirmation redirects.
+    // On native: not needed — deep links handle it differently.
+    detectSessionInUrl: Platform.OS === 'web',
   },
 });
