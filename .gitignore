@@ -30,8 +30,10 @@ yarn-error.*
 .DS_Store
 *.pem
 
-# local env files
+# env files — secrets. NEVER commit .env. (.env.example is committed as a template.)
+.env
 .env*.local
+!.env.example
 
 # typescript
 *.tsbuildinfo
@@ -39,3 +41,9 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Claude Code tooling — not part of the app
+.agents/
+.claude/
+.mcp.json
+skills-lock.json

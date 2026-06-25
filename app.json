@@ -1,7 +1,8 @@
 {
   "expo": {
-    "name": "B2C",
-    "slug": "B2C",
+    "name": "Bloom OS",
+    "slug": "bloom-os-b2c",
+    "scheme": "bloomos",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
