@@ -16,6 +16,7 @@ import type { HealthRecord } from '../types/health';
 interface Props {
   onAddRecord: () => void;
   onViewRecord: (id: string) => void;
+  onOpenFacts: () => void;
 }
 
 function fileIcon(type: string) {
@@ -71,7 +72,7 @@ function RecordCard({
   );
 }
 
-export default function HomeScreen({ onAddRecord, onViewRecord }: Props) {
+export default function HomeScreen({ onAddRecord, onViewRecord, onOpenFacts }: Props) {
   const { session } = useAuth();
   const [records, setRecords] = useState<HealthRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -110,9 +111,14 @@ export default function HomeScreen({ onAddRecord, onViewRecord }: Props) {
           <Text style={styles.brand}>Bloom OS</Text>
           <Text style={styles.subtitle}>Your health, owned by you.</Text>
         </View>
-        <Pressable onPress={() => supabase.auth.signOut()} style={styles.logoutBtn}>
-          <Text style={styles.logoutText}>Log Out</Text>
-        </Pressable>
+        <View style={styles.headerActions}>
+          <Pressable onPress={onOpenFacts} style={styles.headerBtn}>
+            <Text style={styles.headerBtnText}>My Health</Text>
+          </Pressable>
+          <Pressable onPress={() => supabase.auth.signOut()} style={styles.logoutBtn}>
+            <Text style={styles.logoutText}>Log Out</Text>
+          </Pressable>
+        </View>
       </View>
 
       {loading ? (
@@ -170,6 +176,14 @@ const styles = StyleSheet.create({
   },
   brand: { fontSize: 22, fontWeight: '700', color: '#1F6F54' },
   subtitle: { fontSize: 12, color: '#6B7280', marginTop: 2 },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  headerBtn: {
+    backgroundColor: '#E8F5EF',
+    borderRadius: 10,
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+  },
+  headerBtnText: { color: '#1F6F54', fontSize: 13, fontWeight: '600' },
   logoutBtn: { paddingVertical: 6, paddingHorizontal: 2 },
   logoutText: { color: '#6B7280', fontSize: 14 },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
