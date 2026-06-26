@@ -17,6 +17,7 @@ interface Props {
   onAddRecord: () => void;
   onViewRecord: (id: string) => void;
   onOpenFacts: () => void;
+  onOpenShare: () => void;
 }
 
 function fileIcon(type: string) {
@@ -72,7 +73,7 @@ function RecordCard({
   );
 }
 
-export default function HomeScreen({ onAddRecord, onViewRecord, onOpenFacts }: Props) {
+export default function HomeScreen({ onAddRecord, onViewRecord, onOpenFacts, onOpenShare }: Props) {
   const { session } = useAuth();
   const [records, setRecords] = useState<HealthRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -132,6 +133,18 @@ export default function HomeScreen({ onAddRecord, onViewRecord, onOpenFacts }: P
           contentContainerStyle={
             records.length === 0 ? styles.emptyContainer : styles.list
           }
+          ListHeaderComponent={
+            records.length > 0 ? (
+              <Pressable style={styles.shareCta} onPress={onOpenShare}>
+                <Text style={styles.shareCtaIcon}>🔗</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.shareCtaTitle}>Share with a doctor</Text>
+                  <Text style={styles.shareCtaSub}>Show a QR — expires in 60 min</Text>
+                </View>
+                <Text style={styles.shareCtaChevron}>›</Text>
+              </Pressable>
+            ) : null
+          }
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#1F6F54" />
           }
@@ -188,6 +201,24 @@ const styles = StyleSheet.create({
   logoutText: { color: '#6B7280', fontSize: 14 },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   list: { padding: 16, paddingBottom: 100 },
+  shareCta: {
+    backgroundColor: '#1F6F54',
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    shadowColor: '#1F6F54',
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 3,
+  },
+  shareCtaIcon: { fontSize: 22 },
+  shareCtaTitle: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
+  shareCtaSub: { color: '#D7EFE6', fontSize: 12, marginTop: 2 },
+  shareCtaChevron: { color: '#FFFFFF', fontSize: 22 },
   emptyContainer: { flex: 1 },
   empty: {
     flex: 1,

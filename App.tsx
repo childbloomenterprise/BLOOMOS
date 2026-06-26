@@ -7,6 +7,7 @@ import ExplainScreen from './src/screens/ExplainScreen';
 import HealthFactsScreen from './src/screens/HealthFactsScreen';
 import HomeScreen from './src/screens/HomeScreen';
 import RecordDetailScreen from './src/screens/RecordDetailScreen';
+import ShareScreen from './src/screens/ShareScreen';
 import UploadScreen from './src/screens/UploadScreen';
 
 type Screen =
@@ -14,7 +15,8 @@ type Screen =
   | { name: 'upload' }
   | { name: 'detail'; recordId: string }
   | { name: 'explain'; recordId: string; recordTitle: string }
-  | { name: 'facts' };
+  | { name: 'facts' }
+  | { name: 'share' };
 
 function RootNavigator() {
   const { session, isLoading } = useAuth();
@@ -65,11 +67,16 @@ function RootNavigator() {
     return <HealthFactsScreen onBack={() => setScreen({ name: 'home' })} />;
   }
 
+  if (screen.name === 'share') {
+    return <ShareScreen onBack={() => setScreen({ name: 'home' })} />;
+  }
+
   return (
     <HomeScreen
       onAddRecord={() => setScreen({ name: 'upload' })}
       onViewRecord={(id) => setScreen({ name: 'detail', recordId: id })}
       onOpenFacts={() => setScreen({ name: 'facts' })}
+      onOpenShare={() => setScreen({ name: 'share' })}
     />
   );
 }
