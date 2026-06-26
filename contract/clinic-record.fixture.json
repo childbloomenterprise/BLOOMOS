@@ -1,0 +1,25 @@
+{
+  "patient": { "fullName": "Meera Nair", "dob": "1989-03-14", "bloodType": "B+" },
+  "facts": [
+    { "type": "condition",  "label": "Type 2 Diabetes", "detail": "Diagnosed 2021" },
+    { "type": "medication", "label": "Metformin 500mg", "detail": "Twice daily" },
+    { "type": "allergy",    "label": "Penicillin",      "detail": "Rash" }
+  ],
+  "reports": [
+    {
+      "title": "HbA1c Panel",
+      "fileType": "pdf",
+      "recordedAt": "2026-06-20",
+      "aiSummary": "Your HbA1c is 7.8%, a little above the ~7% goal often used when managing diabetes (HbA1c is your average blood sugar over the past ~3 months). It is reassuring that it is not far from target, and small changes often bring it down. This is one snapshot — your doctor reads it alongside your full picture.",
+      "doctorQuestions": [
+        "What HbA1c target is right for me?",
+        "Should my medication change?",
+        "When should I retest?"
+      ],
+      "signedUrl": "https://example.supabase.co/storage/v1/object/sign/health-docs/hba1c.pdf"
+    }
+  ],
+  "sharedAt": "2026-06-26T10:00:00Z",
+  "expiresAt": "2026-06-26T11:00:00Z",
+  "viewedCount": 1
+}
