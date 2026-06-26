@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import AuthScreen from './src/screens/AuthScreen';
+import ExplainScreen from './src/screens/ExplainScreen';
 import HomeScreen from './src/screens/HomeScreen';
 import RecordDetailScreen from './src/screens/RecordDetailScreen';
 import UploadScreen from './src/screens/UploadScreen';
@@ -10,7 +11,8 @@ import UploadScreen from './src/screens/UploadScreen';
 type Screen =
   | { name: 'home' }
   | { name: 'upload' }
-  | { name: 'detail'; recordId: string };
+  | { name: 'detail'; recordId: string }
+  | { name: 'explain'; recordId: string; recordTitle: string };
 
 function RootNavigator() {
   const { session, isLoading } = useAuth();
@@ -42,6 +44,17 @@ function RootNavigator() {
       <RecordDetailScreen
         recordId={screen.recordId}
         onBack={() => setScreen({ name: 'home' })}
+        onExplain={(id, title) => setScreen({ name: 'explain', recordId: id, recordTitle: title })}
+      />
+    );
+  }
+
+  if (screen.name === 'explain') {
+    return (
+      <ExplainScreen
+        recordId={screen.recordId}
+        recordTitle={screen.recordTitle}
+        onBack={() => setScreen({ name: 'detail', recordId: screen.recordId })}
       />
     );
   }

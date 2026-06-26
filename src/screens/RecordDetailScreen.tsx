@@ -18,6 +18,7 @@ import type { HealthRecord } from '../types/health';
 interface Props {
   recordId: string;
   onBack: () => void;
+  onExplain: (recordId: string, recordTitle: string) => void;
 }
 
 function formatDate(iso: string | null): string {
@@ -26,7 +27,7 @@ function formatDate(iso: string | null): string {
   return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
 }
 
-export default function RecordDetailScreen({ recordId, onBack }: Props) {
+export default function RecordDetailScreen({ recordId, onBack, onExplain }: Props) {
   const [record, setRecord] = useState<HealthRecord | null>(null);
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -146,6 +147,15 @@ export default function RecordDetailScreen({ recordId, onBack }: Props) {
           <View style={styles.meta}>
             <Text style={styles.title}>{record.title}</Text>
 
+            {/* Bloom's magic moment — tap to get an AI explanation */}
+            <Pressable
+              style={styles.explainBtn}
+              onPress={() => onExplain(record.id, record.title)}
+            >
+              <Text style={styles.explainBtnEmoji}>✨</Text>
+              <Text style={styles.explainBtnText}>Explain this report</Text>
+            </Pressable>
+
             <View style={styles.row}>
               <Text style={styles.metaLabel}>Date recorded</Text>
               <Text style={styles.metaValue}>{formatDate(record.recorded_at)}</Text>
@@ -223,7 +233,23 @@ const styles = StyleSheet.create({
   },
   openBtnText: { color: '#fff', fontWeight: '600', fontSize: 15 },
   meta: { padding: 24 },
-  title: { fontSize: 22, fontWeight: '700', color: '#111827', marginBottom: 20 },
+  title: { fontSize: 22, fontWeight: '700', color: '#111827', marginBottom: 16 },
+  explainBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1F6F54',
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    marginBottom: 20,
+    shadowColor: '#1F6F54',
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 3,
+  },
+  explainBtnEmoji: { fontSize: 18, marginRight: 10 },
+  explainBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700', flex: 1 },
   row: {
     flexDirection: 'row',
     justifyContent: 'space-between',

@@ -43,6 +43,7 @@ function RecordCard({
   record: HealthRecord;
   onPress: () => void;
 }) {
+  const explained = record.ai_status === 'done' && !!record.ai_summary;
   return (
     <Pressable style={styles.card} onPress={onPress}>
       <View style={[styles.cardAccent, { backgroundColor: accentColor(record.file_type) }]} />
@@ -53,6 +54,16 @@ function RecordCard({
           <Text style={styles.cardDate}>
             {formatDate(record.recorded_at ?? record.created_at)}
           </Text>
+          {explained && (
+            <>
+              <View style={styles.explainedBadge}>
+                <Text style={styles.explainedBadgeText}>✨ Explained</Text>
+              </View>
+              <Text style={styles.cardSnippet} numberOfLines={2}>
+                {record.ai_summary}
+              </Text>
+            </>
+          )}
         </View>
         <Text style={styles.chevron}>›</Text>
       </View>
@@ -198,6 +209,16 @@ const styles = StyleSheet.create({
   cardText: { flex: 1 },
   cardTitle: { fontSize: 15, fontWeight: '600', color: '#111827' },
   cardDate: { fontSize: 13, color: '#6B7280', marginTop: 3 },
+  explainedBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#E8F5EF',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    marginTop: 8,
+  },
+  explainedBadgeText: { fontSize: 11, fontWeight: '700', color: '#1F6F54' },
+  cardSnippet: { fontSize: 12, color: '#6B7280', marginTop: 6, lineHeight: 17 },
   chevron: { fontSize: 22, color: '#D1D5DB' },
   fab: {
     position: 'absolute',
