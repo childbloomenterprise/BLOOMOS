@@ -5,6 +5,7 @@
 // pass user_id on reads — but inserts must set it (the WITH CHECK policy).
 
 import { supabase } from './supabase';
+import { refreshPatientSummaryInBackground } from './summary';
 import type { FactType, HealthFact, Profile } from '../types/facts';
 
 export async function listFacts(): Promise<HealthFact[]> {
@@ -28,12 +29,16 @@ export async function addFact(
     .select()
     .single();
   if (error) throw error;
+  // The facts changed — refresh the at-a-glance handoff in the background.
+  refreshPatientSummaryInBackground();
   return data as HealthFact;
 }
 
 export async function deleteFact(id: string): Promise<void> {
   const { error } = await supabase.from('health_facts').delete().eq('id', id);
   if (error) throw error;
+  // The facts changed — refresh the at-a-glance handoff in the background.
+  refreshPatientSummaryInBackground();
 }
 
 export async function getProfile(userId: string): Promise<Profile | null> {

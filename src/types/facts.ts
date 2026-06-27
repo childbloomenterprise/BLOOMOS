@@ -15,4 +15,7 @@ export interface Profile {
   dob: string | null;        // YYYY-MM-DD
   blood_type: string | null;
   created_at: string;
+  // The persisted at-a-glance handoff produced by the patient-summary function.
+  summary: string | null;
+  summary_updated_at: string | null;
 }
