@@ -129,6 +129,34 @@ count of `access_log` rows for that share (first view → 1).
 
 ---
 
+## Privacy endpoints — "your data is yours" (Full DoD)
+
+Two owner-only functions make the privacy promise real. Both verify the caller from
+their JWT (`auth.uid()`) and **never** accept a user id from the client.
+
+### Edge Function: `export-data` (`verify_jwt: true`)
+**Request** `{}` · **Response (HTTP 200)**:
+```json
+{
+  "exportedAt": "ISO timestamp",
+  "account": { "id": "uuid", "email": "string|null" },
+  "profile": { "full_name": "...", "dob": "...", "blood_type": "...", "summary": "...", "summary_updated_at": "...", "created_at": "..." },
+  "facts":   [ { "type": "...", "label": "...", "detail": "string|null", "created_at": "..." } ],
+  "records": [ { "title": "...", "notes": "...", "file_type": "...", "file_name": "...", "file_size": 0, "recorded_at": "...", "ai_summary": "...", "ai_questions": ["..."], "ai_status": "...", "created_at": "...", "signedUrl": "5-min signed URL|null" } ]
+}
+```
+Reads run under the caller's JWT (RLS owner-only); signed URLs live 5 minutes.
+Wrapper: `src/lib/privacy.ts → exportData()`.
+
+### Edge Function: `delete-account` (`verify_jwt: true`)
+Destructive + irreversible. **Request** `{ "confirm": true }` (the flag is required;
+without it → `{ "error": "Confirmation required" }`, HTTP 400). **Response** `{ "ok": true }`.
+Removes the caller's storage objects under `${uid}/`, then deletes the auth user; the FK
+`on delete cascade` wipes profile/records/facts/shares/access_log. A caller can only ever
+delete **their own** account. Wrapper: `src/lib/privacy.ts → deleteAccount()`.
+
+---
+
 ## Security hardening (from the Supabase advisors)
 
 - `revoke execute on function public.handle_new_user() from anon, authenticated;` — the
