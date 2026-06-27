@@ -1,6 +1,6 @@
 export type ClinicFactType = 'condition' | 'medication' | 'allergy';
 export type ClinicFileType = 'image' | 'pdf' | 'document';
-export type ClinicError = 'invalid' | 'expired' | 'revoked';
+export type ClinicError = 'invalid' | 'expired' | 'revoked' | 'rate_limited';
 
 export interface ClinicPatient {
   fullName: string;
@@ -27,6 +27,8 @@ export interface ClinicRecord {
   patient: ClinicPatient;
   facts: ClinicFact[];
   reports: ClinicReport[];
+  summary: string | null;
+  viewerEvents: string[];
   sharedAt: string;
   expiresAt: string;
   viewedCount: number;

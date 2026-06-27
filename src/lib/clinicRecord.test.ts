@@ -43,14 +43,14 @@ test('at-a-glance summary is derived from contract fields', () => {
   assert.equal(glance.medicationCount, 1);
   assert.equal(glance.allergyCount, 1);
   assert.equal(glance.latestReportTitle, 'HbA1c Panel');
-  assert.match(glance.latestReportSummary, /HbA1c is 7\.8%/);
+  assert.match(glance.latestReportSummary, /Meera lives with Type 2 Diabetes/);
   assert.equal(glance.allergySummary, 'Penicillin');
 });
 
 test('viewer history line reflects viewed count', () => {
   assert.equal(
     getViewerHistoryLine(fixture as ClinicRecord),
-    'Viewer history: 1 view logged for this patient-shared link.'
+    'Viewer history: 1 view; latest view 26 Jun 2026.'
   );
 });
 
@@ -61,5 +61,15 @@ test('revoked token payload becomes revoked unavailable state', () => {
   if (state.kind === 'unavailable') {
     assert.equal(state.error, 'revoked');
     assert.match(state.title, /revoked/i);
+  }
+});
+
+test('rate-limited token payload becomes cooling-down unavailable state', () => {
+  const state = toClinicViewState({ error: 'rate_limited' });
+
+  assert.equal(state.kind, 'unavailable');
+  if (state.kind === 'unavailable') {
+    assert.equal(state.error, 'rate_limited');
+    assert.match(state.message, /Too many recent views/i);
   }
 });
