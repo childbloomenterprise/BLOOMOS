@@ -31,7 +31,8 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "test": "tsx --test src/lib/clinicRecord.test.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "reset:demo": "node scripts/reset-meera.mjs"
   },
   "private": true
 }
