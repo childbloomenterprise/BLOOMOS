@@ -1,11 +1,13 @@
 import { StatusBar } from 'expo-status-bar';
 import React, { useState } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import AuthScreen from './src/screens/AuthScreen';
+import ClinicScreen from './src/screens/ClinicScreen';
 import ExplainScreen from './src/screens/ExplainScreen';
 import HealthFactsScreen from './src/screens/HealthFactsScreen';
 import HomeScreen from './src/screens/HomeScreen';
+import LandingScreen from './src/screens/LandingScreen';
 import RecordDetailScreen from './src/screens/RecordDetailScreen';
 import ShareScreen from './src/screens/ShareScreen';
 import UploadScreen from './src/screens/UploadScreen';
@@ -18,9 +20,40 @@ type Screen =
   | { name: 'facts' }
   | { name: 'share' };
 
+function getClinicTokenFromWebUrl(): string | null | undefined {
+  if (Platform.OS !== 'web' || typeof window === 'undefined') {
+    return undefined;
+  }
+
+  const url = new URL(window.location.href);
+  const isClinicPath = url.pathname === '/clinic';
+  const token = url.searchParams.get('token');
+
+  if (!isClinicPath && token === null) {
+    return undefined;
+  }
+
+  return token;
+}
+
+function shouldShowWebLanding(): boolean {
+  if (Platform.OS !== 'web' || typeof window === 'undefined') {
+    return false;
+  }
+
+  const url = new URL(window.location.href);
+  const hasAuthRedirect =
+    url.searchParams.has('code') ||
+    url.hash.includes('access_token') ||
+    url.hash.includes('refresh_token');
+
+  return url.pathname === '/' && !hasAuthRedirect;
+}
+
 function RootNavigator() {
   const { session, isLoading } = useAuth();
   const [screen, setScreen] = useState<Screen>({ name: 'home' });
+  const [toast, setToast] = useState<string | null>(null);
 
   if (isLoading) {
     return (
@@ -37,7 +70,10 @@ function RootNavigator() {
   if (screen.name === 'upload') {
     return (
       <UploadScreen
-        onDone={() => setScreen({ name: 'home' })}
+        onDone={() => {
+          setToast('Record saved. You can explain it or share it when ready.');
+          setScreen({ name: 'home' });
+        }}
         onBack={() => setScreen({ name: 'home' })}
       />
     );
@@ -77,11 +113,33 @@ function RootNavigator() {
       onViewRecord={(id) => setScreen({ name: 'detail', recordId: id })}
       onOpenFacts={() => setScreen({ name: 'facts' })}
       onOpenShare={() => setScreen({ name: 'share' })}
+      toast={toast}
+      onToastDone={() => setToast(null)}
     />
   );
 }
 
 export default function App() {
+  const clinicToken = getClinicTokenFromWebUrl();
+
+  if (clinicToken !== undefined) {
+    return (
+      <>
+        <StatusBar style="dark" />
+        <ClinicScreen token={clinicToken} />
+      </>
+    );
+  }
+
+  if (shouldShowWebLanding()) {
+    return (
+      <>
+        <StatusBar style="dark" />
+        <LandingScreen />
+      </>
+    );
+  }
+
   return (
     <AuthProvider>
       <StatusBar style="dark" />

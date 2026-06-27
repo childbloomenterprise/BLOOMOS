@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
   FlatList,
   Platform,
   Pressable,
@@ -9,6 +8,8 @@ import {
   Text,
   View,
 } from 'react-native';
+import { bloom } from '../../contract/tokens';
+import { FadeIn, SkeletonBlock, ToastBanner } from '../components/Bloom';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import type { HealthRecord } from '../types/health';
@@ -18,18 +19,20 @@ interface Props {
   onViewRecord: (id: string) => void;
   onOpenFacts: () => void;
   onOpenShare: () => void;
+  toast?: string | null;
+  onToastDone?: () => void;
 }
 
-function fileIcon(type: string) {
-  if (type === 'image') return '🖼️';
-  if (type === 'pdf') return '📄';
-  return '📋';
+function fileLabel(type: string) {
+  if (type === 'image') return 'Image';
+  if (type === 'pdf') return 'PDF';
+  return 'Doc';
 }
 
 function accentColor(type: string) {
-  if (type === 'image') return '#3B82F6';
-  if (type === 'pdf') return '#EF4444';
-  return '#6B7280';
+  if (type === 'image') return '#2F80ED';
+  if (type === 'pdf') return bloom.danger;
+  return bloom.muted;
 }
 
 function formatDate(iso: string | null): string {
@@ -46,26 +49,29 @@ function RecordCard({
   onPress: () => void;
 }) {
   const explained = record.ai_status === 'done' && !!record.ai_summary;
+
   return (
-    <Pressable style={styles.card} onPress={onPress}>
+    <Pressable accessibilityRole="button" style={styles.card} onPress={onPress}>
       <View style={[styles.cardAccent, { backgroundColor: accentColor(record.file_type) }]} />
       <View style={styles.cardBody}>
-        <Text style={styles.cardIcon}>{fileIcon(record.file_type)}</Text>
+        <View style={styles.fileBadge}>
+          <Text style={styles.fileBadgeText}>{fileLabel(record.file_type)}</Text>
+        </View>
         <View style={styles.cardText}>
-          <Text style={styles.cardTitle} numberOfLines={1}>{record.title}</Text>
-          <Text style={styles.cardDate}>
-            {formatDate(record.recorded_at ?? record.created_at)}
+          <Text style={styles.cardTitle} numberOfLines={1}>
+            {record.title}
           </Text>
-          {explained && (
+          <Text style={styles.cardDate}>{formatDate(record.recorded_at ?? record.created_at)}</Text>
+          {explained ? (
             <>
               <View style={styles.explainedBadge}>
-                <Text style={styles.explainedBadgeText}>✨ Explained</Text>
+                <Text style={styles.explainedBadgeText}>Explained</Text>
               </View>
               <Text style={styles.cardSnippet} numberOfLines={2}>
                 {record.ai_summary}
               </Text>
             </>
-          )}
+          ) : null}
         </View>
         <Text style={styles.chevron}>›</Text>
       </View>
@@ -73,7 +79,14 @@ function RecordCard({
   );
 }
 
-export default function HomeScreen({ onAddRecord, onViewRecord, onOpenFacts, onOpenShare }: Props) {
+export default function HomeScreen({
+  onAddRecord,
+  onViewRecord,
+  onOpenFacts,
+  onOpenShare,
+  toast,
+  onToastDone,
+}: Props) {
   const { session } = useAuth();
   const [records, setRecords] = useState<HealthRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -99,6 +112,12 @@ export default function HomeScreen({ onAddRecord, onViewRecord, onOpenFacts, onO
     fetchRecords().finally(() => setLoading(false));
   }, []);
 
+  useEffect(() => {
+    if (!toast || !onToastDone) return;
+    const id = setTimeout(onToastDone, 3200);
+    return () => clearTimeout(id);
+  }, [toast, onToastDone]);
+
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await fetchRecords();
@@ -113,68 +132,88 @@ export default function HomeScreen({ onAddRecord, onViewRecord, onOpenFacts, onO
           <Text style={styles.subtitle}>Your health, owned by you.</Text>
         </View>
         <View style={styles.headerActions}>
-          <Pressable onPress={onOpenFacts} style={styles.headerBtn}>
+          <Pressable accessibilityRole="button" onPress={onOpenFacts} style={styles.headerBtn}>
             <Text style={styles.headerBtnText}>My Health</Text>
           </Pressable>
-          <Pressable onPress={() => supabase.auth.signOut()} style={styles.logoutBtn}>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => supabase.auth.signOut()}
+            style={styles.logoutBtn}
+          >
             <Text style={styles.logoutText}>Log Out</Text>
           </Pressable>
         </View>
       </View>
 
       {loading ? (
-        <View style={styles.centered}>
-          <ActivityIndicator size="large" color="#1F6F54" />
-        </View>
+        <HomeSkeleton />
       ) : (
         <FlatList
           data={records}
           keyExtractor={(r) => r.id}
-          contentContainerStyle={
-            records.length === 0 ? styles.emptyContainer : styles.list
-          }
+          contentContainerStyle={records.length === 0 ? styles.emptyContainer : styles.list}
           ListHeaderComponent={
-            records.length > 0 ? (
-              <Pressable style={styles.shareCta} onPress={onOpenShare}>
-                <Text style={styles.shareCtaIcon}>🔗</Text>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.shareCtaTitle}>Share with a doctor</Text>
-                  <Text style={styles.shareCtaSub}>Show a QR — expires in 60 min</Text>
-                </View>
-                <Text style={styles.shareCtaChevron}>›</Text>
-              </Pressable>
-            ) : null
+            <>
+              {toast ? <ToastBanner message={toast} /> : null}
+              {records.length > 0 ? (
+                <FadeIn>
+                  <Pressable accessibilityRole="button" style={styles.shareCta} onPress={onOpenShare}>
+                    <Text style={styles.shareCtaIcon}>Share</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.shareCtaTitle}>Share with a doctor</Text>
+                      <Text style={styles.shareCtaSub}>Show a QR - expires in 60 min</Text>
+                    </View>
+                    <Text style={styles.shareCtaChevron}>›</Text>
+                  </Pressable>
+                </FadeIn>
+              ) : null}
+            </>
           }
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#1F6F54" />
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={bloom.primary} />
           }
           ListEmptyComponent={
-            <View style={styles.empty}>
-              <Text style={styles.emptyIcon}>🌱</Text>
+            <FadeIn style={styles.empty}>
               <Text style={styles.emptyTitle}>No health records yet</Text>
               <Text style={styles.emptyNote}>
                 {error ??
-                  'Tap + to add your first one — a lab report, prescription, scan, or anything health-related.'}
+                  'Start by adding one report, prescription, scan, or note. Bloom OS keeps it ready for you and readable for your doctor.'}
               </Text>
-            </View>
+              <Pressable accessibilityRole="button" style={styles.emptyButton} onPress={onAddRecord}>
+                <Text style={styles.emptyButtonText}>Add first record</Text>
+              </Pressable>
+            </FadeIn>
           }
           renderItem={({ item }) => (
-            <RecordCard record={item} onPress={() => onViewRecord(item.id)} />
+            <FadeIn>
+              <RecordCard record={item} onPress={() => onViewRecord(item.id)} />
+            </FadeIn>
           )}
         />
       )}
 
-      <Pressable style={styles.fab} onPress={onAddRecord}>
+      <Pressable accessibilityRole="button" style={styles.fab} onPress={onAddRecord}>
         <Text style={styles.fabIcon}>+</Text>
       </Pressable>
     </View>
   );
 }
 
+function HomeSkeleton() {
+  return (
+    <View style={styles.skeletonWrap}>
+      <SkeletonBlock style={styles.skeletonShare} />
+      <SkeletonBlock style={styles.skeletonCard} />
+      <SkeletonBlock style={styles.skeletonCard} />
+      <SkeletonBlock style={styles.skeletonCard} />
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F5F7FB' },
+  container: { flex: 1, backgroundColor: bloom.bg },
   header: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: bloom.surface,
     paddingTop: Platform.OS === 'ios' ? 60 : 40,
     paddingBottom: 16,
     paddingHorizontal: 24,
@@ -187,38 +226,40 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     elevation: 2,
   },
-  brand: { fontSize: 22, fontWeight: '700', color: '#1F6F54' },
-  subtitle: { fontSize: 12, color: '#6B7280', marginTop: 2 },
+  brand: { fontSize: 23, fontWeight: '900', color: bloom.primaryInk },
+  subtitle: { fontSize: 13, color: bloom.muted, marginTop: 2, fontWeight: '600' },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 14 },
   headerBtn: {
-    backgroundColor: '#E8F5EF',
+    backgroundColor: bloom.accent,
     borderRadius: 10,
-    paddingVertical: 7,
+    paddingVertical: 10,
     paddingHorizontal: 12,
+    minHeight: 44,
+    justifyContent: 'center',
   },
-  headerBtnText: { color: '#1F6F54', fontSize: 13, fontWeight: '600' },
-  logoutBtn: { paddingVertical: 6, paddingHorizontal: 2 },
-  logoutText: { color: '#6B7280', fontSize: 14 },
-  centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  headerBtnText: { color: bloom.primaryInk, fontSize: 13, fontWeight: '800' },
+  logoutBtn: { paddingVertical: 8, paddingHorizontal: 4, minHeight: 44, justifyContent: 'center' },
+  logoutText: { color: bloom.muted, fontSize: 14, fontWeight: '600' },
   list: { padding: 16, paddingBottom: 100 },
   shareCta: {
-    backgroundColor: '#1F6F54',
+    backgroundColor: bloom.primaryInk,
     borderRadius: 14,
     padding: 16,
     marginBottom: 14,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    shadowColor: '#1F6F54',
-    shadowOpacity: 0.25,
+    minHeight: 76,
+    shadowColor: bloom.primaryInk,
+    shadowOpacity: 0.22,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 3 },
     elevation: 3,
   },
-  shareCtaIcon: { fontSize: 22 },
-  shareCtaTitle: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
-  shareCtaSub: { color: '#D7EFE6', fontSize: 12, marginTop: 2 },
-  shareCtaChevron: { color: '#FFFFFF', fontSize: 22 },
+  shareCtaIcon: { color: '#FFFFFF', fontSize: 12, fontWeight: '900', textTransform: 'uppercase' },
+  shareCtaTitle: { color: '#FFFFFF', fontSize: 16, fontWeight: '900' },
+  shareCtaSub: { color: '#D7EFE6', fontSize: 13, marginTop: 2, fontWeight: '600' },
+  shareCtaChevron: { color: '#FFFFFF', fontSize: 24 },
   emptyContainer: { flex: 1 },
   empty: {
     flex: 1,
@@ -227,59 +268,74 @@ const styles = StyleSheet.create({
     padding: 40,
     marginTop: 60,
   },
-  emptyIcon: { fontSize: 52, marginBottom: 16 },
-  emptyTitle: { fontSize: 18, fontWeight: '600', color: '#111827', marginBottom: 10 },
-  emptyNote: { fontSize: 14, color: '#6B7280', textAlign: 'center', lineHeight: 22 },
+  emptyTitle: { fontSize: 24, fontWeight: '900', color: bloom.ink, marginBottom: 10, textAlign: 'center' },
+  emptyNote: { fontSize: 16, color: bloom.muted, textAlign: 'center', lineHeight: 25, maxWidth: 360 },
+  emptyButton: {
+    minHeight: 50,
+    marginTop: 20,
+    backgroundColor: bloom.primary,
+    borderRadius: 14,
+    paddingHorizontal: 18,
+    justifyContent: 'center',
+  },
+  emptyButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '900' },
   card: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: bloom.surface,
     borderRadius: 14,
     marginBottom: 12,
     flexDirection: 'row',
     overflow: 'hidden',
+    minHeight: 96,
     shadowColor: '#1A2B4A',
     shadowOpacity: 0.06,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 2 },
     elevation: 2,
   },
-  cardAccent: { width: 4 },
-  cardBody: {
-    flex: 1,
-    flexDirection: 'row',
+  cardAccent: { width: 5 },
+  cardBody: { flex: 1, flexDirection: 'row', alignItems: 'center', padding: 16, gap: 12 },
+  fileBadge: {
+    minWidth: 48,
+    minHeight: 44,
+    borderRadius: 12,
+    backgroundColor: '#F0F7F4',
+    justifyContent: 'center',
     alignItems: 'center',
-    padding: 16,
-    gap: 12,
+    paddingHorizontal: 8,
   },
-  cardIcon: { fontSize: 24 },
+  fileBadgeText: { color: bloom.primaryInk, fontSize: 12, fontWeight: '900' },
   cardText: { flex: 1 },
-  cardTitle: { fontSize: 15, fontWeight: '600', color: '#111827' },
-  cardDate: { fontSize: 13, color: '#6B7280', marginTop: 3 },
+  cardTitle: { fontSize: 17, fontWeight: '800', color: bloom.ink },
+  cardDate: { fontSize: 14, color: bloom.muted, marginTop: 3, fontWeight: '600' },
   explainedBadge: {
     alignSelf: 'flex-start',
-    backgroundColor: '#E8F5EF',
+    backgroundColor: bloom.accent,
     borderRadius: 8,
     paddingHorizontal: 8,
     paddingVertical: 3,
     marginTop: 8,
   },
-  explainedBadgeText: { fontSize: 11, fontWeight: '700', color: '#1F6F54' },
-  cardSnippet: { fontSize: 12, color: '#6B7280', marginTop: 6, lineHeight: 17 },
-  chevron: { fontSize: 22, color: '#D1D5DB' },
+  explainedBadgeText: { fontSize: 11, fontWeight: '900', color: bloom.primaryInk },
+  cardSnippet: { fontSize: 13, color: bloom.muted, marginTop: 6, lineHeight: 19 },
+  chevron: { fontSize: 24, color: '#CAD8D2' },
   fab: {
     position: 'absolute',
     bottom: 32,
     right: 24,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#1F6F54',
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    backgroundColor: bloom.primary,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#1F6F54',
-    shadowOpacity: 0.4,
+    shadowColor: bloom.primary,
+    shadowOpacity: 0.35,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 4 },
     elevation: 6,
   },
-  fabIcon: { fontSize: 28, color: '#FFFFFF', lineHeight: 32 },
+  fabIcon: { fontSize: 30, color: '#FFFFFF', lineHeight: 34 },
+  skeletonWrap: { padding: 16, paddingBottom: 100 },
+  skeletonShare: { height: 76, marginBottom: 14 },
+  skeletonCard: { height: 96, marginBottom: 12 },
 });

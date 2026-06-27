@@ -19,6 +19,8 @@
       "signedUrl": "https://example.supabase.co/storage/v1/object/sign/health-docs/hba1c.pdf"
     }
   ],
+  "summary": "Meera lives with Type 2 Diabetes (diagnosed 2021) and takes Metformin 500mg twice daily. Her most recent HbA1c is 7.8%, a little above the ~7% goal often used in diabetes care, and her recent cholesterol and thyroid checks are broadly in their usual ranges. She has a penicillin allergy (rash). These are plain-language explanations of her own records, not a diagnosis — her doctor reads them alongside her full picture.",
+  "viewerEvents": ["2026-06-26T10:00:00Z"],
   "sharedAt": "2026-06-26T10:00:00Z",
   "expiresAt": "2026-06-26T11:00:00Z",
   "viewedCount": 1
