@@ -3,8 +3,46 @@ import { createClient } from 'jsr:@supabase/supabase-js@2';
 
 // ─── clinic-record ─────────────────────────────────────────────────────────────
 // PUBLIC function (verify_jwt = FALSE). The share TOKEN is the auth. We validate
-// it server-side with the service role, log every view to access_log, then return
-// the patient's unified record. The client is NEVER trusted: no token, no data.
+// it server-side with the service role, then enforce the CONSENT GATE before any
+// data leaves: a token is not readable until its owner approves the request.
+//
+//   pending   first contact  -> flip to 'requested', return { status: 'pending' }
+//   requested still waiting   -> return { status: 'pending' } (the phone polls)
+//   denied                    -> return { error: 'denied' }
+//   approved                  -> log the view + return the unified record
+//
+// Only the approved branch logs a view or mints signed URLs, so a doctor's phone
+// polling for approval costs nothing and never trips the rate limit. The client is
+// NEVER trusted: no token, no approval, no data.
+
+// A short, non-PII hint for the owner's Accept/Deny popup, derived from the
+// requester's User-Agent. Best-effort only — it is display text, never a check.
+function describeRequester(ua: string | null): string {
+  if (!ua) return 'A device';
+  const browser = /Edg\//.test(ua)
+    ? 'Edge'
+    : /OPR\/|Opera/.test(ua)
+      ? 'Opera'
+      : /Chrome\//.test(ua)
+        ? 'Chrome'
+        : /Firefox\//.test(ua)
+          ? 'Firefox'
+          : /Safari\//.test(ua)
+            ? 'Safari'
+            : 'A browser';
+  const os = /Windows/.test(ua)
+    ? 'Windows'
+    : /iPhone|iPad|iPod/.test(ua)
+      ? 'iOS'
+      : /Android/.test(ua)
+        ? 'Android'
+        : /Mac OS X|Macintosh/.test(ua)
+          ? 'Mac'
+          : /Linux/.test(ua)
+            ? 'Linux'
+            : 'a device';
+  return `${browser} on ${os}`;
+}
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -51,16 +89,41 @@ Deno.serve(async (req: Request) => {
   // ── Validate the token (service role bypasses RLS) ───────────────────────────
   const { data: share, error: shareErr } = await admin
     .from('shares')
-    .select('id, user_id, created_at, expires_at, revoked')
+    .select('id, user_id, created_at, expires_at, revoked, status')
     .eq('token', token)
     .maybeSingle();
 
   if (shareErr || !share) return jsonResponse({ error: 'invalid' });
 
-  // Revoke/expiry are checked BEFORE we mint any signed URL or log a view, so a
-  // revoked or expired share never yields a fresh, openable file link.
+  // Revoke/expiry are checked BEFORE the consent gate (and before any signed URL or
+  // view log), so a revoked or expired share never yields data or a fresh link.
   if (share.revoked) return jsonResponse({ error: 'revoked' });
   if (new Date(share.expires_at).getTime() <= Date.now()) return jsonResponse({ error: 'expired' });
+
+  // ── Consent gate ─────────────────────────────────────────────────────────────
+  // The owner must approve before any data leaves. Until then we expose only a
+  // coarse { status: 'pending' } that the doctor's phone polls on.
+  if (share.status === 'denied') return jsonResponse({ error: 'denied' });
+
+  if (share.status === 'pending' || share.status === 'requested') {
+    // First contact flips pending -> requested and stamps a non-PII requester hint,
+    // which is what surfaces the live Accept/Deny popup on the owner's laptop. Later
+    // polls stay 'requested' and never overwrite the original request.
+    if (share.status === 'pending') {
+      await admin
+        .from('shares')
+        .update({
+          status: 'requested',
+          requested_at: new Date().toISOString(),
+          requester_label: describeRequester(req.headers.get('user-agent')),
+        })
+        .eq('id', share.id)
+        .eq('status', 'pending'); // guard: don't clobber a concurrent request
+    }
+    return jsonResponse({ status: 'pending' });
+  }
+
+  // status === 'approved' — fall through to logging + returning the record.
 
   // ── Per-token + IP rate limit ────────────────────────────────────────────────
   const fwd = req.headers.get('x-forwarded-for') ?? req.headers.get('x-real-ip') ?? '';

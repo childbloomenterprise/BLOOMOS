@@ -12,6 +12,7 @@ import {
   View,
 } from 'react-native';
 import { bloom } from '../../contract/tokens';
+import { Card, FactPill, MetricTile, StatusPill } from '../components/Bloom';
 import { useAuth } from '../context/AuthContext';
 import { addFact, deleteFact, getProfile, listFacts, updateProfile } from '../lib/facts';
 import type { FactType, HealthFact, Profile } from '../types/facts';
@@ -39,6 +40,9 @@ export default function HealthFactsScreen({ onBack }: Props) {
   const [dob, setDob] = useState('');
   const [bloodType, setBloodType] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
+  const conditionCount = facts.filter((fact) => fact.type === 'condition').length;
+  const medicationCount = facts.filter((fact) => fact.type === 'medication').length;
+  const allergyCount = facts.filter((fact) => fact.type === 'allergy').length;
 
   useEffect(() => {
     (async () => {
@@ -83,7 +87,7 @@ export default function HealthFactsScreen({ onBack }: Props) {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <View style={styles.header}>
-        <Pressable onPress={onBack} style={styles.backBtn}>
+        <Pressable accessibilityRole="button" onPress={onBack} style={styles.backBtn}>
           <Text style={styles.backText}>← Back</Text>
         </Pressable>
         <Text style={styles.headerTitle}>My Health</Text>
@@ -96,6 +100,19 @@ export default function HealthFactsScreen({ onBack }: Props) {
         </View>
       ) : (
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+          <Card style={styles.heroCard}>
+            <StatusPill label="Patient facts" />
+            <Text style={styles.heroTitle}>The context doctors ask for first.</Text>
+            <Text style={styles.heroBody}>
+              Keep conditions, medications, allergies, and identity details ready before a clinic handoff.
+            </Text>
+            <View style={styles.metricRow}>
+              <MetricTile label="Conditions" value={conditionCount} caption="ongoing context" />
+              <MetricTile label="Meds" value={medicationCount} caption="current medicines" />
+              <MetricTile label="Allergies" value={allergyCount} caption="flagged red" tone={allergyCount > 0 ? 'danger' : 'mint'} />
+            </View>
+          </Card>
+
           {/* Profile */}
           <View style={styles.card}>
             <Text style={styles.sectionLabel}>Profile</Text>
@@ -130,6 +147,7 @@ export default function HealthFactsScreen({ onBack }: Props) {
             />
 
             <Pressable
+              accessibilityRole="button"
               style={[styles.primaryBtn, savingProfile && styles.btnDisabled]}
               onPress={handleSaveProfile}
               disabled={savingProfile}
@@ -184,7 +202,6 @@ function FactGroup({
   const [label, setLabel] = useState('');
   const [detail, setDetail] = useState('');
   const [adding, setAdding] = useState(false);
-  const isAllergy = type === 'allergy';
 
   async function handleAdd() {
     if (!label.trim()) return;
@@ -208,15 +225,11 @@ function FactGroup({
         <Text style={styles.emptyText}>None added yet.</Text>
       ) : (
         facts.map((f) => (
-          <View key={f.id} style={styles.factRow}>
-            <View style={[styles.factDot, isAllergy && styles.factDotAllergy]} />
+          <View key={f.id} style={styles.factPillRow}>
             <View style={{ flex: 1 }}>
-              <Text style={[styles.factLabel, isAllergy && styles.factLabelAllergy]}>
-                {f.label}
-              </Text>
-              {f.detail ? <Text style={styles.factDetail}>{f.detail}</Text> : null}
+              <FactPill fact={{ type: f.type, label: f.label, detail: f.detail }} />
             </View>
-            <Pressable onPress={() => onDelete(f.id)} hitSlop={8} style={styles.removeBtn}>
+            <Pressable accessibilityRole="button" onPress={() => onDelete(f.id)} hitSlop={8} style={styles.removeBtn}>
               <Text style={styles.removeText}>Remove</Text>
             </Pressable>
           </View>
@@ -239,6 +252,7 @@ function FactGroup({
           placeholderTextColor={bloom.muted}
         />
         <Pressable
+          accessibilityRole="button"
           style={[styles.addBtn, (adding || !label.trim()) && styles.btnDisabled]}
           onPress={handleAdd}
           disabled={adding || !label.trim()}
@@ -255,90 +269,79 @@ const styles = StyleSheet.create({
   header: {
     backgroundColor: bloom.surface,
     paddingTop: Platform.OS === 'ios' ? 60 : 40,
-    paddingBottom: 16,
-    paddingHorizontal: 16,
+    paddingBottom: bloom.space.lg,
+    paddingHorizontal: bloom.space.lg,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    shadowColor: '#1A2B4A',
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
+    ...bloom.elevation.sm,
   },
-  backBtn: { padding: 8, minWidth: 64 },
-  backText: { color: bloom.primary, fontSize: 15, fontWeight: '500' },
-  headerTitle: { fontSize: 17, fontWeight: '600', color: bloom.ink },
+  backBtn: { padding: bloom.space.sm, minWidth: 64, minHeight: 44, justifyContent: 'center' },
+  backText: { color: bloom.primary, ...bloom.text.small, fontWeight: '900' },
+  headerTitle: { ...bloom.text.h2, color: bloom.ink },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  scroll: { padding: 16, paddingBottom: 60 },
+  scroll: { padding: bloom.space.lg, paddingBottom: 60 },
+  heroCard: { padding: bloom.space.xl, marginBottom: bloom.space.lg },
+  heroTitle: { color: bloom.ink, ...bloom.text.h1, marginTop: bloom.space.md },
+  heroBody: { color: bloom.muted, ...bloom.text.body, fontWeight: '600', marginTop: bloom.space.sm, marginBottom: bloom.space.lg },
+  metricRow: { flexDirection: 'row', flexWrap: 'wrap', gap: bloom.space.md },
   card: {
     backgroundColor: bloom.surface,
-    borderRadius: bloom.radius,
-    padding: 18,
-    marginBottom: 14,
-    shadowColor: '#1A2B4A',
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 1,
+    borderRadius: bloom.radii.card,
+    padding: bloom.space.xl,
+    marginBottom: bloom.space.lg,
+    borderWidth: 1,
+    borderColor: bloom.hair,
+    ...bloom.elevation.sm,
   },
   sectionLabel: {
-    fontSize: 11,
-    fontWeight: '700',
+    ...bloom.text.eyebrow,
     color: bloom.primaryInk,
-    letterSpacing: 0.8,
     textTransform: 'uppercase',
-    marginBottom: 12,
+    marginBottom: bloom.space.md,
   },
-  inputLabel: { fontSize: 13, fontWeight: '500', color: bloom.muted, marginBottom: 6 },
+  inputLabel: { ...bloom.text.small, fontWeight: '700', color: bloom.muted, marginBottom: bloom.space.sm },
   input: {
     backgroundColor: bloom.bg,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 15,
+    borderRadius: bloom.radii.md,
+    paddingHorizontal: bloom.space.lg,
+    paddingVertical: bloom.space.md,
+    ...bloom.text.small,
     color: bloom.ink,
-    marginBottom: 12,
+    marginBottom: bloom.space.md,
     borderWidth: 1,
-    borderColor: '#E5EFEA',
+    borderColor: bloom.hair,
   },
   primaryBtn: {
     backgroundColor: bloom.primary,
-    borderRadius: 12,
-    paddingVertical: 14,
+    borderRadius: bloom.radii.md,
+    paddingVertical: bloom.space.lg,
     alignItems: 'center',
     marginTop: 2,
+    minHeight: 50,
+    justifyContent: 'center',
+    ...bloom.elevation.sm,
   },
-  primaryBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  primaryBtnText: { color: '#fff', ...bloom.text.small, fontWeight: '900' },
   btnDisabled: { opacity: 0.5 },
-  emptyText: { fontSize: 14, color: bloom.muted, marginBottom: 12 },
-  factRow: {
+  emptyText: { ...bloom.text.small, color: bloom.muted, marginBottom: bloom.space.md },
+  factPillRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#EEF4F1',
+    alignItems: 'stretch',
+    gap: bloom.space.md,
+    marginBottom: bloom.space.md,
   },
-  factDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: bloom.primary,
-    marginRight: 12,
-  },
-  factDotAllergy: { backgroundColor: bloom.danger },
-  factLabel: { fontSize: 15, fontWeight: '600', color: bloom.ink },
-  factLabelAllergy: { color: bloom.danger },
-  factDetail: { fontSize: 13, color: bloom.muted, marginTop: 2 },
-  removeBtn: { paddingHorizontal: 6, paddingVertical: 4 },
-  removeText: { fontSize: 13, color: bloom.muted },
-  addRow: { marginTop: 12 },
-  addInput: { marginBottom: 8 },
+  removeBtn: { paddingHorizontal: bloom.space.sm, paddingVertical: bloom.space.xs, minHeight: 44, justifyContent: 'center' },
+  removeText: { ...bloom.text.small, color: bloom.muted },
+  addRow: { marginTop: bloom.space.md },
+  addInput: { marginBottom: bloom.space.sm },
   addBtn: {
     backgroundColor: bloom.accent,
-    borderRadius: 12,
-    paddingVertical: 12,
+    borderRadius: bloom.radii.md,
+    paddingVertical: bloom.space.md,
     alignItems: 'center',
+    minHeight: 44,
+    justifyContent: 'center',
   },
-  addBtnText: { color: bloom.primaryInk, fontSize: 14, fontWeight: '700' },
+  addBtnText: { color: bloom.primaryInk, ...bloom.text.small, fontWeight: '900' },
 });

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   FlatList,
   Platform,
@@ -8,10 +8,25 @@ import {
   Text,
   View,
 } from 'react-native';
+import patientSummaryFixture from '../../contract/patient-summary.fixture.json';
 import { bloom } from '../../contract/tokens';
-import { FadeIn, SkeletonBlock, ToastBanner } from '../components/Bloom';
+import {
+  Card,
+  Disclaimer,
+  ExplainedBadge,
+  FactPill,
+  FadeIn,
+  GradientPanel,
+  MetricTile,
+  SkeletonBlock,
+  StatusPill,
+  ToastBanner,
+} from '../components/Bloom';
 import { useAuth } from '../context/AuthContext';
+import { listFacts } from '../lib/facts';
+import { getPatientSummary, type PatientSummary } from '../lib/summary';
 import { supabase } from '../lib/supabase';
+import type { HealthFact } from '../types/facts';
 import type { HealthRecord } from '../types/health';
 
 interface Props {
@@ -19,9 +34,14 @@ interface Props {
   onViewRecord: (id: string) => void;
   onOpenFacts: () => void;
   onOpenShare: () => void;
+  onOpenSettings: () => void;
   toast?: string | null;
   onToastDone?: () => void;
 }
+
+type TimelineEntry =
+  | { kind: 'record'; id: string; createdAt: string; record: HealthRecord }
+  | { kind: 'fact'; id: string; createdAt: string; fact: HealthFact };
 
 function fileLabel(type: string) {
   if (type === 'image') return 'Image';
@@ -30,7 +50,7 @@ function fileLabel(type: string) {
 }
 
 function accentColor(type: string) {
-  if (type === 'image') return '#2F80ED';
+  if (type === 'image') return '#2f80ed';
   if (type === 'pdf') return bloom.danger;
   return bloom.muted;
 }
@@ -41,13 +61,7 @@ function formatDate(iso: string | null): string {
   return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-function RecordCard({
-  record,
-  onPress,
-}: {
-  record: HealthRecord;
-  onPress: () => void;
-}) {
+function RecordCard({ record, onPress }: { record: HealthRecord; onPress: () => void }) {
   const explained = record.ai_status === 'done' && !!record.ai_summary;
 
   return (
@@ -64,18 +78,30 @@ function RecordCard({
           <Text style={styles.cardDate}>{formatDate(record.recorded_at ?? record.created_at)}</Text>
           {explained ? (
             <>
-              <View style={styles.explainedBadge}>
-                <Text style={styles.explainedBadgeText}>Explained</Text>
-              </View>
+              <ExplainedBadge />
               <Text style={styles.cardSnippet} numberOfLines={2}>
                 {record.ai_summary}
               </Text>
             </>
           ) : null}
         </View>
-        <Text style={styles.chevron}>›</Text>
+        <Text style={styles.chevron}>{'>'}</Text>
       </View>
     </Pressable>
+  );
+}
+
+function FactTimelineCard({ fact }: { fact: HealthFact }) {
+  return (
+    <Card style={styles.factTimelineCard}>
+      <View style={styles.factTimelineHeader}>
+        <Text style={[styles.factTimelineLabel, fact.type === 'allergy' && styles.factTimelineLabelDanger]}>
+          {fact.type === 'allergy' ? 'Allergy' : fact.type === 'medication' ? 'Medication' : 'Condition'}
+        </Text>
+        <Text style={styles.cardDate}>{formatDate(fact.created_at)}</Text>
+      </View>
+      <FactPill fact={{ type: fact.type, label: fact.label, detail: fact.detail }} />
+    </Card>
   );
 }
 
@@ -84,33 +110,85 @@ export default function HomeScreen({
   onViewRecord,
   onOpenFacts,
   onOpenShare,
+  onOpenSettings,
   toast,
   onToastDone,
 }: Props) {
   const { session } = useAuth();
   const [records, setRecords] = useState<HealthRecord[]>([]);
+  const [facts, setFacts] = useState<HealthFact[]>([]);
+  const [summary, setSummary] = useState<PatientSummary>({
+    summary: patientSummaryFixture.summary,
+    summaryUpdatedAt: patientSummaryFixture.summaryUpdatedAt,
+  });
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function fetchRecords() {
-    setError(null);
-    const { data, error: err } = await supabase
-      .from('health_records')
-      .select('*')
-      .eq('user_id', session!.user.id)
-      .order('created_at', { ascending: false });
+  const timeline = useMemo<TimelineEntry[]>(() => {
+    const entries: TimelineEntry[] = [
+      ...records.map((record) => ({
+        kind: 'record' as const,
+        id: `record-${record.id}`,
+        createdAt: record.created_at,
+        record,
+      })),
+      ...facts.map((fact) => ({
+        kind: 'fact' as const,
+        id: `fact-${fact.id}`,
+        createdAt: fact.created_at,
+        fact,
+      })),
+    ];
 
-    if (err) {
-      setError('Could not load records. Pull down to retry.');
-    } else {
-      setRecords(data ?? []);
+    return entries.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }, [facts, records]);
+
+  const careStats = useMemo(() => {
+    const explained = records.filter((record) => record.ai_status === 'done' && !!record.ai_summary).length;
+    const allergyCount = facts.filter((fact) => fact.type === 'allergy').length;
+
+    return {
+      explained,
+      allergyCount,
+      factCount: facts.length,
+      recordCount: records.length,
+    };
+  }, [facts, records]);
+
+  const fetchHomeData = useCallback(async () => {
+    setError(null);
+
+    try {
+      const [{ data, error: recordsError }, nextFacts, nextSummary] = await Promise.all([
+        supabase
+          .from('health_records')
+          .select('*')
+          .eq('user_id', session!.user.id)
+          .order('created_at', { ascending: false }),
+        listFacts(),
+        getPatientSummary(session!.user.id).catch(() => ({
+          summary: patientSummaryFixture.summary,
+          summaryUpdatedAt: patientSummaryFixture.summaryUpdatedAt,
+        })),
+      ]);
+
+      if (recordsError) throw recordsError;
+
+      setRecords((data ?? []) as HealthRecord[]);
+      setFacts(nextFacts);
+      setSummary({
+        summary: nextSummary.summary ?? patientSummaryFixture.summary,
+        summaryUpdatedAt: nextSummary.summaryUpdatedAt ?? patientSummaryFixture.summaryUpdatedAt,
+      });
+    } catch {
+      setError('Could not load your timeline. Pull down to retry.');
     }
-  }
+  }, [session]);
 
   useEffect(() => {
-    fetchRecords().finally(() => setLoading(false));
-  }, []);
+    fetchHomeData().finally(() => setLoading(false));
+  }, [fetchHomeData]);
 
   useEffect(() => {
     if (!toast || !onToastDone) return;
@@ -120,26 +198,25 @@ export default function HomeScreen({
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await fetchRecords();
+    await fetchHomeData();
     setRefreshing(false);
-  }, []);
+  }, [fetchHomeData]);
 
   return (
     <View style={styles.container}>
       <View style={styles.header}>
         <View>
           <Text style={styles.brand}>Bloom OS</Text>
-          <Text style={styles.subtitle}>Your health, owned by you.</Text>
+          <Text style={styles.subtitle}>Patient command center</Text>
         </View>
         <View style={styles.headerActions}>
           <Pressable accessibilityRole="button" onPress={onOpenFacts} style={styles.headerBtn}>
             <Text style={styles.headerBtnText}>My Health</Text>
           </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => supabase.auth.signOut()}
-            style={styles.logoutBtn}
-          >
+          <Pressable accessibilityRole="button" onPress={onOpenSettings} style={styles.headerBtnGhost}>
+            <Text style={styles.headerBtnGhostText}>Settings</Text>
+          </Pressable>
+          <Pressable accessibilityRole="button" onPress={() => supabase.auth.signOut()} style={styles.logoutBtn}>
             <Text style={styles.logoutText}>Log Out</Text>
           </Pressable>
         </View>
@@ -149,29 +226,73 @@ export default function HomeScreen({
         <HomeSkeleton />
       ) : (
         <FlatList
-          data={records}
-          keyExtractor={(r) => r.id}
-          contentContainerStyle={records.length === 0 ? styles.emptyContainer : styles.list}
+          data={timeline}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={timeline.length === 0 ? styles.emptyContainer : styles.list}
           ListHeaderComponent={
             <>
               {toast ? <ToastBanner message={toast} /> : null}
-              {records.length > 0 ? (
+              <FadeIn style={styles.homeLead}>
+                <StatusPill label="Your health OS" />
+                <Text style={styles.homeTitle}>Everything your doctor needs, organized before the visit.</Text>
+                <Text style={styles.homeBody}>
+                  Bloom keeps your reports, facts, allergies, and explanations in one quiet timeline
+                  so the next handoff starts with context instead of chaos.
+                </Text>
+              </FadeIn>
+              <FadeIn style={styles.metricRow}>
+                <MetricTile
+                  label="Records"
+                  value={careStats.recordCount}
+                  caption={`${careStats.explained} explained`}
+                />
+                <MetricTile
+                  label="Facts"
+                  value={careStats.factCount}
+                  caption="conditions, meds, allergies"
+                />
+                <MetricTile
+                  label="Alerts"
+                  value={careStats.allergyCount}
+                  caption="allergy flags"
+                  tone={careStats.allergyCount > 0 ? 'danger' : 'mint'}
+                />
+              </FadeIn>
+              <FadeIn>
+                <GradientPanel style={styles.summaryCard}>
+                  <View style={styles.summaryHeader}>
+                    <Text style={styles.summaryEyebrow}>At a glance</Text>
+                    <Text style={styles.summaryStamp}>
+                      {summary.summaryUpdatedAt ? `Updated ${formatDate(summary.summaryUpdatedAt)}` : 'Ready when records arrive'}
+                    </Text>
+                  </View>
+                  <Text style={styles.summaryText}>
+                    {summary.summary ?? 'Add facts and explained records to generate a calm doctor handoff.'}
+                  </Text>
+                  <Disclaimer />
+                </GradientPanel>
+              </FadeIn>
+              {timeline.length > 0 ? (
                 <FadeIn>
                   <Pressable accessibilityRole="button" style={styles.shareCta} onPress={onOpenShare}>
-                    <Text style={styles.shareCtaIcon}>Share</Text>
+                    <Text style={styles.shareCtaIcon}>Clinic</Text>
                     <View style={{ flex: 1 }}>
-                      <Text style={styles.shareCtaTitle}>Share with a doctor</Text>
-                      <Text style={styles.shareCtaSub}>Show a QR - expires in 60 min</Text>
+                      <Text style={styles.shareCtaTitle}>Prepare doctor handoff</Text>
+                      <Text style={styles.shareCtaSub}>QR link, expiry, revoke, and viewer history</Text>
                     </View>
-                    <Text style={styles.shareCtaChevron}>›</Text>
+                    <Text style={styles.shareCtaChevron}>{'>'}</Text>
                   </Pressable>
                 </FadeIn>
               ) : null}
+              {timeline.length > 0 ? (
+                <View style={styles.timelineHeading}>
+                  <Text style={styles.timelineTitle}>Care timeline</Text>
+                  <Text style={styles.timelineSub}>Newest records and health facts first</Text>
+                </View>
+              ) : null}
             </>
           }
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={bloom.primary} />
-          }
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={bloom.primary} />}
           ListEmptyComponent={
             <FadeIn style={styles.empty}>
               <Text style={styles.emptyTitle}>No health records yet</Text>
@@ -186,7 +307,11 @@ export default function HomeScreen({
           }
           renderItem={({ item }) => (
             <FadeIn>
-              <RecordCard record={item} onPress={() => onViewRecord(item.id)} />
+              {item.kind === 'record' ? (
+                <RecordCard record={item.record} onPress={() => onViewRecord(item.record.id)} />
+              ) : (
+                <FactTimelineCard fact={item.fact} />
+              )}
             </FadeIn>
           )}
         />
@@ -215,51 +340,73 @@ const styles = StyleSheet.create({
   header: {
     backgroundColor: bloom.surface,
     paddingTop: Platform.OS === 'ios' ? 60 : 40,
-    paddingBottom: 16,
-    paddingHorizontal: 24,
+    paddingBottom: bloom.space.lg,
+    paddingHorizontal: bloom.space.xl,
     flexDirection: 'row',
     alignItems: 'flex-end',
     justifyContent: 'space-between',
-    shadowColor: '#1A2B4A',
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
+    gap: bloom.space.lg,
+    flexWrap: 'wrap',
+    ...bloom.elevation.sm,
   },
-  brand: { fontSize: 23, fontWeight: '900', color: bloom.primaryInk },
-  subtitle: { fontSize: 13, color: bloom.muted, marginTop: 2, fontWeight: '600' },
-  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  brand: { ...bloom.text.h1, color: bloom.primaryInk },
+  subtitle: { ...bloom.text.small, color: bloom.muted, marginTop: 2 },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: bloom.space.sm, flexWrap: 'wrap' },
   headerBtn: {
     backgroundColor: bloom.accent,
-    borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
+    borderRadius: bloom.radii.sm,
+    paddingVertical: bloom.space.sm,
+    paddingHorizontal: bloom.space.md,
     minHeight: 44,
     justifyContent: 'center',
   },
-  headerBtnText: { color: bloom.primaryInk, fontSize: 13, fontWeight: '800' },
-  logoutBtn: { paddingVertical: 8, paddingHorizontal: 4, minHeight: 44, justifyContent: 'center' },
-  logoutText: { color: bloom.muted, fontSize: 14, fontWeight: '600' },
-  list: { padding: 16, paddingBottom: 100 },
+  headerBtnText: { color: bloom.primaryInk, ...bloom.text.small, fontWeight: '900' },
+  headerBtnGhost: {
+    borderRadius: bloom.radii.sm,
+    paddingVertical: bloom.space.sm,
+    paddingHorizontal: bloom.space.sm,
+    minHeight: 44,
+    justifyContent: 'center',
+  },
+  headerBtnGhostText: { color: bloom.muted, ...bloom.text.small, fontWeight: '800' },
+  logoutBtn: { paddingVertical: bloom.space.sm, paddingHorizontal: bloom.space.xs, minHeight: 44, justifyContent: 'center' },
+  logoutText: { color: bloom.muted, ...bloom.text.small },
+  list: { padding: bloom.space.lg, paddingBottom: 100 },
+  homeLead: {
+    backgroundColor: bloom.surface,
+    borderRadius: bloom.radii.card,
+    borderWidth: 1,
+    borderColor: bloom.hair,
+    padding: bloom.space.xl,
+    marginBottom: bloom.space.lg,
+    ...bloom.elevation.sm,
+  },
+  homeTitle: { color: bloom.ink, ...bloom.text.h1, marginTop: bloom.space.md },
+  homeBody: { color: bloom.muted, ...bloom.text.body, fontWeight: '600', marginTop: bloom.space.sm },
+  metricRow: { flexDirection: 'row', flexWrap: 'wrap', gap: bloom.space.md, marginBottom: bloom.space.lg },
+  summaryCard: { padding: bloom.space.xl, marginBottom: bloom.space.lg, gap: bloom.space.lg },
+  summaryHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: bloom.space.md },
+  summaryEyebrow: { color: bloom.mint, ...bloom.text.eyebrow, textTransform: 'uppercase' },
+  summaryStamp: { color: '#d8f6eb', ...bloom.text.small, fontWeight: '900' },
+  summaryText: { color: '#ffffff', ...bloom.text.body, fontWeight: '700' },
   shareCta: {
-    backgroundColor: bloom.primaryInk,
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 14,
+    backgroundColor: bloom.primaryDark,
+    borderRadius: bloom.radii.card,
+    padding: bloom.space.lg,
+    marginBottom: bloom.space.lg,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: bloom.space.md,
     minHeight: 76,
-    shadowColor: bloom.primaryInk,
-    shadowOpacity: 0.22,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 3,
+    ...bloom.elevation.md,
   },
-  shareCtaIcon: { color: '#FFFFFF', fontSize: 12, fontWeight: '900', textTransform: 'uppercase' },
-  shareCtaTitle: { color: '#FFFFFF', fontSize: 16, fontWeight: '900' },
-  shareCtaSub: { color: '#D7EFE6', fontSize: 13, marginTop: 2, fontWeight: '600' },
-  shareCtaChevron: { color: '#FFFFFF', fontSize: 24 },
+  shareCtaIcon: { color: '#ffffff', ...bloom.text.eyebrow, textTransform: 'uppercase' },
+  shareCtaTitle: { color: '#ffffff', ...bloom.text.title },
+  shareCtaSub: { color: '#d7efe6', ...bloom.text.small, marginTop: 2 },
+  shareCtaChevron: { color: '#ffffff', fontSize: 24, lineHeight: 28 },
+  timelineHeading: { marginTop: bloom.space.sm, marginBottom: bloom.space.md },
+  timelineTitle: { color: bloom.ink, ...bloom.text.h2 },
+  timelineSub: { color: bloom.muted, ...bloom.text.small, marginTop: bloom.space.xs },
   emptyContainer: { flex: 1 },
   empty: {
     flex: 1,
@@ -268,56 +415,55 @@ const styles = StyleSheet.create({
     padding: 40,
     marginTop: 60,
   },
-  emptyTitle: { fontSize: 24, fontWeight: '900', color: bloom.ink, marginBottom: 10, textAlign: 'center' },
-  emptyNote: { fontSize: 16, color: bloom.muted, textAlign: 'center', lineHeight: 25, maxWidth: 360 },
+  emptyTitle: { ...bloom.text.h1, color: bloom.ink, marginBottom: bloom.space.md, textAlign: 'center' },
+  emptyNote: { ...bloom.text.body, color: bloom.muted, textAlign: 'center', maxWidth: 360 },
   emptyButton: {
     minHeight: 50,
-    marginTop: 20,
+    marginTop: bloom.space.xl,
     backgroundColor: bloom.primary,
-    borderRadius: 14,
-    paddingHorizontal: 18,
+    borderRadius: bloom.radii.md,
+    paddingHorizontal: bloom.space.xl,
     justifyContent: 'center',
   },
-  emptyButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '900' },
+  emptyButtonText: { color: '#ffffff', ...bloom.text.title },
   card: {
     backgroundColor: bloom.surface,
-    borderRadius: 14,
-    marginBottom: 12,
+    borderRadius: bloom.radii.card,
+    marginBottom: bloom.space.md,
     flexDirection: 'row',
     overflow: 'hidden',
     minHeight: 96,
-    shadowColor: '#1A2B4A',
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
+    borderWidth: 1,
+    borderColor: bloom.hair,
+    ...bloom.elevation.sm,
   },
   cardAccent: { width: 5 },
-  cardBody: { flex: 1, flexDirection: 'row', alignItems: 'center', padding: 16, gap: 12 },
+  cardBody: { flex: 1, flexDirection: 'row', alignItems: 'center', padding: bloom.space.lg, gap: bloom.space.md },
   fileBadge: {
     minWidth: 48,
     minHeight: 44,
-    borderRadius: 12,
-    backgroundColor: '#F0F7F4',
+    borderRadius: bloom.radii.sm,
+    backgroundColor: bloom.mintSoft,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 8,
+    paddingHorizontal: bloom.space.sm,
   },
-  fileBadgeText: { color: bloom.primaryInk, fontSize: 12, fontWeight: '900' },
+  fileBadgeText: { color: bloom.primaryInk, ...bloom.text.eyebrow },
   cardText: { flex: 1 },
-  cardTitle: { fontSize: 17, fontWeight: '800', color: bloom.ink },
-  cardDate: { fontSize: 14, color: bloom.muted, marginTop: 3, fontWeight: '600' },
-  explainedBadge: {
-    alignSelf: 'flex-start',
-    backgroundColor: bloom.accent,
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    marginTop: 8,
+  cardTitle: { ...bloom.text.title, color: bloom.ink },
+  cardDate: { ...bloom.text.small, color: bloom.muted, marginTop: bloom.space.xs },
+  cardSnippet: { ...bloom.text.small, color: bloom.muted, marginTop: bloom.space.sm },
+  chevron: { fontSize: 24, lineHeight: 28, color: '#cad8d2' },
+  factTimelineCard: { padding: bloom.space.lg, marginBottom: bloom.space.md },
+  factTimelineHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: bloom.space.md,
+    alignItems: 'center',
+    marginBottom: bloom.space.md,
   },
-  explainedBadgeText: { fontSize: 11, fontWeight: '900', color: bloom.primaryInk },
-  cardSnippet: { fontSize: 13, color: bloom.muted, marginTop: 6, lineHeight: 19 },
-  chevron: { fontSize: 24, color: '#CAD8D2' },
+  factTimelineLabel: { color: bloom.primaryInk, ...bloom.text.eyebrow, textTransform: 'uppercase' },
+  factTimelineLabelDanger: { color: bloom.danger },
   fab: {
     position: 'absolute',
     bottom: 32,
@@ -328,14 +474,10 @@ const styles = StyleSheet.create({
     backgroundColor: bloom.primary,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: bloom.primary,
-    shadowOpacity: 0.35,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
+    ...bloom.elevation.lg,
   },
-  fabIcon: { fontSize: 30, color: '#FFFFFF', lineHeight: 34 },
-  skeletonWrap: { padding: 16, paddingBottom: 100 },
-  skeletonShare: { height: 76, marginBottom: 14 },
-  skeletonCard: { height: 96, marginBottom: 12 },
+  fabIcon: { fontSize: 30, color: '#ffffff', lineHeight: 34 },
+  skeletonWrap: { padding: bloom.space.lg, paddingBottom: 100 },
+  skeletonShare: { height: 76, marginBottom: bloom.space.lg },
+  skeletonCard: { height: 96, marginBottom: bloom.space.md },
 });

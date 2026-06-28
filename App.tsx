@@ -7,18 +7,25 @@ import ClinicScreen from './src/screens/ClinicScreen';
 import ExplainScreen from './src/screens/ExplainScreen';
 import HealthFactsScreen from './src/screens/HealthFactsScreen';
 import HomeScreen from './src/screens/HomeScreen';
+import HospitalScreen from './src/screens/HospitalScreen';
+import InvestorScreen from './src/screens/InvestorScreen';
 import LandingScreen from './src/screens/LandingScreen';
+import OnboardingScreen from './src/screens/OnboardingScreen';
+import PatientDemoScreen from './src/screens/PatientDemoScreen';
 import RecordDetailScreen from './src/screens/RecordDetailScreen';
+import SettingsScreen from './src/screens/SettingsScreen';
 import ShareScreen from './src/screens/ShareScreen';
 import UploadScreen from './src/screens/UploadScreen';
 
 type Screen =
+  | { name: 'onboarding' }
   | { name: 'home' }
   | { name: 'upload' }
   | { name: 'detail'; recordId: string }
   | { name: 'explain'; recordId: string; recordTitle: string }
   | { name: 'facts' }
-  | { name: 'share' };
+  | { name: 'share' }
+  | { name: 'settings' };
 
 function getClinicTokenFromWebUrl(): string | null | undefined {
   if (Platform.OS !== 'web' || typeof window === 'undefined') {
@@ -50,9 +57,33 @@ function shouldShowWebLanding(): boolean {
   return url.pathname === '/' && !hasAuthRedirect;
 }
 
+function shouldShowHospitalPreview(): boolean {
+  if (Platform.OS !== 'web' || typeof window === 'undefined') {
+    return false;
+  }
+
+  return new URL(window.location.href).pathname === '/hospital';
+}
+
+function shouldShowInvestorRoom(): boolean {
+  if (Platform.OS !== 'web' || typeof window === 'undefined') {
+    return false;
+  }
+
+  return new URL(window.location.href).pathname === '/investor';
+}
+
+function shouldShowPatientDemo(): boolean {
+  if (Platform.OS !== 'web' || typeof window === 'undefined') {
+    return false;
+  }
+
+  return new URL(window.location.href).pathname === '/patient';
+}
+
 function RootNavigator() {
   const { session, isLoading } = useAuth();
-  const [screen, setScreen] = useState<Screen>({ name: 'home' });
+  const [screen, setScreen] = useState<Screen>({ name: 'onboarding' });
   const [toast, setToast] = useState<string | null>(null);
 
   if (isLoading) {
@@ -65,6 +96,15 @@ function RootNavigator() {
 
   if (!session) {
     return <AuthScreen />;
+  }
+
+  if (screen.name === 'onboarding') {
+    return (
+      <OnboardingScreen
+        onAddRecord={() => setScreen({ name: 'upload' })}
+        onContinue={() => setScreen({ name: 'home' })}
+      />
+    );
   }
 
   if (screen.name === 'upload') {
@@ -107,12 +147,17 @@ function RootNavigator() {
     return <ShareScreen onBack={() => setScreen({ name: 'home' })} />;
   }
 
+  if (screen.name === 'settings') {
+    return <SettingsScreen onBack={() => setScreen({ name: 'home' })} />;
+  }
+
   return (
     <HomeScreen
       onAddRecord={() => setScreen({ name: 'upload' })}
       onViewRecord={(id) => setScreen({ name: 'detail', recordId: id })}
       onOpenFacts={() => setScreen({ name: 'facts' })}
       onOpenShare={() => setScreen({ name: 'share' })}
+      onOpenSettings={() => setScreen({ name: 'settings' })}
       toast={toast}
       onToastDone={() => setToast(null)}
     />
@@ -136,6 +181,33 @@ export default function App() {
       <>
         <StatusBar style="dark" />
         <LandingScreen />
+      </>
+    );
+  }
+
+  if (shouldShowHospitalPreview()) {
+    return (
+      <>
+        <StatusBar style="dark" />
+        <HospitalScreen />
+      </>
+    );
+  }
+
+  if (shouldShowInvestorRoom()) {
+    return (
+      <>
+        <StatusBar style="dark" />
+        <InvestorScreen />
+      </>
+    );
+  }
+
+  if (shouldShowPatientDemo()) {
+    return (
+      <>
+        <StatusBar style="dark" />
+        <PatientDemoScreen />
       </>
     );
   }

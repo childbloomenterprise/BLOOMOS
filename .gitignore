@@ -53,3 +53,6 @@ skills-lock.json
 
 # Graphify tooling — not part of the app
 .graphify_python
+
+.vercel
+.env*.local

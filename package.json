@@ -10,6 +10,7 @@
     "expo-document-picker": "~56.0.4",
     "expo-file-system": "~56.0.8",
     "expo-image-picker": "~56.0.18",
+    "expo-linear-gradient": "~56.0.4",
     "expo-status-bar": "~56.0.4",
     "react": "19.2.3",
     "react-dom": "19.2.3",
@@ -30,7 +31,7 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "test": "tsx --test src/lib/clinicRecord.test.ts",
+    "test": "tsx --test src/lib/clinicRecord.test.ts src/screens/hospitalData.test.ts src/screens/investorData.test.ts src/screens/patientDemoData.test.ts",
     "typecheck": "tsc --noEmit",
     "reset:demo": "node scripts/reset-meera.mjs"
   },

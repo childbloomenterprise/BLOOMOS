@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  AccessibilityInfo,
   Animated,
   Platform,
   Pressable,
@@ -9,8 +10,9 @@ import {
   Text,
   View,
 } from 'react-native';
+import clinicFixture from '../../contract/clinic-record.fixture.json';
 import { bloom } from '../../contract/tokens';
-import { Card, Disclaimer, FactPill, TimelineItem, TrustBar } from '../components/Bloom';
+import { BloomMark, Card, Disclaimer, FactPill, GradientPanel, MetricTile, StatusPill, TimelineItem, TrustBar } from '../components/Bloom';
 import {
   formatDob,
   getClinicAtAGlance,
@@ -18,7 +20,7 @@ import {
   readClinicRecord,
   toClinicViewState,
 } from '../lib/clinicRecord';
-import type { ClinicFactType, ClinicViewState } from '../types/clinic';
+import type { ClinicError, ClinicFactType, ClinicRecord, ClinicRecordResult, ClinicViewState } from '../types/clinic';
 
 const factLabels: Record<ClinicFactType, string> = {
   condition: 'Conditions',
@@ -26,28 +28,87 @@ const factLabels: Record<ClinicFactType, string> = {
   allergy: 'Allergies',
 };
 
+// Dev shortcuts for exercising each UI state without a live share: the literal
+// tokens below render that error, and 'pending' renders the waiting state. ANY
+// OTHER (real) token goes to the LIVE clinic-record function — that is what drives
+// the real scan -> owner approves -> record handshake. For fully offline UI work
+// against the static fixture, set EXPO_PUBLIC_USE_FIXTURES=1 (readClinicRecord
+// honours it).
+const demoStateTokens: ClinicError[] = ['invalid', 'expired', 'revoked', 'rate_limited', 'denied'];
+
+async function readClinicForToken(token: string | null): Promise<ClinicRecordResult> {
+  const normalizedToken = token?.trim() ?? '';
+
+  if (!normalizedToken) {
+    return { error: 'invalid' };
+  }
+
+  if ((demoStateTokens as string[]).includes(normalizedToken)) {
+    return { error: normalizedToken as ClinicError };
+  }
+
+  if (normalizedToken === 'pending') {
+    return { status: 'pending' };
+  }
+
+  if (normalizedToken === 'demo') {
+    return clinicFixture as ClinicRecord;
+  }
+
+  return readClinicRecord(token);
+}
+
+// How often the doctor's device re-checks while waiting for the owner to approve,
+// and how long it keeps trying before telling them to ask the patient to retry.
+const POLL_MS = 2500;
+const MAX_WAIT_MS = 5 * 60 * 1000;
+
 export default function ClinicScreen({ token }: { token: string | null }) {
   const [state, setState] = useState<'loading' | ClinicViewState>('loading');
   const opacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let fadedIn = false;
+    const startedAt = Date.now();
 
     setState('loading');
     opacity.setValue(0);
 
-    readClinicRecord(token).then((result) => {
+    const fadeInOnce = () => {
+      if (fadedIn) return;
+      fadedIn = true;
+      AccessibilityInfo.isReduceMotionEnabled().then((reducedMotion) => {
+        if (cancelled) return;
+        if (reducedMotion) {
+          opacity.setValue(1);
+          return;
+        }
+        Animated.timing(opacity, { toValue: 1, duration: 240, useNativeDriver: true }).start();
+      });
+    };
+
+    // Poll the consent gate: 'pending' means the owner hasn't accepted yet, so we
+    // re-check until it flips to a record or a terminal error (or we give up).
+    const poll = async () => {
+      const result = await readClinicForToken(token);
       if (cancelled) return;
-      setState(toClinicViewState(result));
-      Animated.timing(opacity, {
-        toValue: 1,
-        duration: 240,
-        useNativeDriver: true,
-      }).start();
-    });
+
+      const view = toClinicViewState(result);
+      setState(view);
+      fadeInOnce();
+
+      if (view.kind === 'pending' && Date.now() - startedAt < MAX_WAIT_MS) {
+        timer = setTimeout(poll, POLL_MS);
+      }
+    };
+
+    poll();
 
     return () => {
       cancelled = true;
+      if (timer) clearTimeout(timer);
     };
   }, [token, opacity]);
 
@@ -73,6 +134,10 @@ export default function ClinicScreen({ token }: { token: string | null }) {
     return <ClinicSkeleton />;
   }
 
+  if (state.kind === 'pending') {
+    return <ClinicWaiting opacity={opacity} />;
+  }
+
   if (state.kind === 'unavailable') {
     return (
       <View style={styles.unavailableWrap}>
@@ -93,7 +158,10 @@ export default function ClinicScreen({ token }: { token: string | null }) {
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Animated.View style={[styles.page, { opacity }]} {...({ dataSet: { printRoot: 'true' } } as any)}>
         <View style={styles.topline}>
-          <Text style={styles.product}>Bloom OS Clinic View</Text>
+          <View style={styles.productLockup}>
+            <BloomMark size={32} />
+            <Text style={styles.product}>Bloom OS Clinic View</Text>
+          </View>
           <View style={styles.toplineRight}>
             <Text style={styles.secure}>Read-only shared record</Text>
             {Platform.OS === 'web' ? (
@@ -109,8 +177,9 @@ export default function ClinicScreen({ token }: { token: string | null }) {
           </View>
         </View>
 
-        <Card style={styles.hero}>
+        <GradientPanel style={styles.hero}>
           <View style={styles.patientBlock}>
+            <StatusPill label="Read-only handoff" tone="dark" />
             <Text style={styles.patientName}>{record.patient.fullName}</Text>
             <Text style={styles.patientMeta}>DOB {formatDob(record.patient.dob)}</Text>
           </View>
@@ -118,7 +187,7 @@ export default function ClinicScreen({ token }: { token: string | null }) {
             <Text style={styles.bloodLabel}>Blood type</Text>
             <Text style={styles.bloodValue}>{record.patient.bloodType}</Text>
           </View>
-        </Card>
+        </GradientPanel>
 
         <TrustBar
           sharedAt={record.sharedAt}
@@ -127,25 +196,19 @@ export default function ClinicScreen({ token }: { token: string | null }) {
           viewerHistory={getViewerHistoryLine(record)}
         />
 
-        <Card style={styles.glanceCard}>
+        <GradientPanel style={styles.glanceCard}>
           <View style={styles.glanceHeader}>
-            <Text style={styles.sectionTitle}>At a glance</Text>
+            <View>
+              <Text style={styles.glanceEyebrow}>Clinical summary</Text>
+              <Text style={styles.glanceTitle}>At a glance</Text>
+            </View>
             <Text style={styles.glanceReport}>{atAGlance.latestReportTitle}</Text>
           </View>
           <Text style={styles.glanceSummary}>{atAGlance.latestReportSummary}</Text>
           <View style={styles.glanceStats}>
-            <View style={styles.statPill}>
-              <Text style={styles.statValue}>{atAGlance.conditionCount}</Text>
-              <Text style={styles.statLabel}>conditions</Text>
-            </View>
-            <View style={styles.statPill}>
-              <Text style={styles.statValue}>{atAGlance.medicationCount}</Text>
-              <Text style={styles.statLabel}>medications</Text>
-            </View>
-            <View style={[styles.statPill, styles.statPillDanger]}>
-              <Text style={[styles.statValue, styles.statDanger]}>{atAGlance.allergyCount}</Text>
-              <Text style={[styles.statLabel, styles.statDanger]}>allergies</Text>
-            </View>
+            <MetricTile label="Conditions" value={atAGlance.conditionCount} caption="patient-stated" tone="dark" />
+            <MetricTile label="Medications" value={atAGlance.medicationCount} caption="active context" tone="dark" />
+            <MetricTile label="Allergies" value={atAGlance.allergyCount} caption="verify first" tone="danger" />
           </View>
           {allergyFacts.length > 0 ? (
             <View style={styles.allergyAlert}>
@@ -154,7 +217,7 @@ export default function ClinicScreen({ token }: { token: string | null }) {
             </View>
           ) : null}
           <Disclaimer />
-        </Card>
+        </GradientPanel>
 
         <View style={styles.grid}>
           {(['condition', 'medication', 'allergy'] as ClinicFactType[]).map((type) => {
@@ -213,119 +276,143 @@ function ClinicSkeleton() {
   );
 }
 
+// Shown on the doctor's device while the consent gate is still closed. The poll in
+// ClinicScreen swaps this for the record the moment the owner accepts.
+function ClinicWaiting({ opacity }: { opacity: Animated.Value }) {
+  return (
+    <View style={styles.unavailableWrap}>
+      <Animated.View style={[styles.waiting, { opacity }]}>
+        <ActivityIndicator size="large" color={bloom.primary} />
+        <Text style={styles.waitingTitle}>Waiting for the patient to approve</Text>
+        <Text style={styles.waitingMessage}>
+          Your request reached the patient. The moment they tap Accept on their device, their
+          read-only record opens here automatically.
+        </Text>
+        <Disclaimer />
+      </Animated.View>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: bloom.bg },
-  content: { padding: 18, paddingBottom: 44 },
+  content: { padding: bloom.space.xl, paddingBottom: 44 },
   page: {
     width: '100%',
     maxWidth: 1060,
     alignSelf: 'center',
-    gap: bloom.gap,
+    gap: bloom.space.lg,
   },
   topline: {
     paddingTop: Platform.OS === 'web' ? 18 : 38,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    gap: 12,
+    gap: bloom.space.md,
     flexWrap: 'wrap',
   },
+  productLockup: { flexDirection: 'row', alignItems: 'center', gap: bloom.space.md },
   toplineRight: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-end',
-    gap: 10,
+    gap: bloom.space.sm,
     flexWrap: 'wrap',
   },
-  product: { color: bloom.primaryInk, fontSize: 15, fontWeight: '900' },
-  secure: { color: bloom.muted, fontSize: 14, fontWeight: '700' },
+  product: { color: bloom.primaryInk, ...bloom.text.title },
+  secure: { color: bloom.muted, ...bloom.text.small, fontWeight: '800' },
   printButton: {
     minHeight: 44,
     backgroundColor: bloom.primary,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 11,
+    borderRadius: bloom.radii.md,
+    paddingHorizontal: bloom.space.lg,
+    paddingVertical: bloom.space.md,
     justifyContent: 'center',
+    ...bloom.elevation.sm,
   },
-  printButtonText: { color: '#FFFFFF', fontSize: 14, fontWeight: '900' },
+  printButtonText: { color: '#ffffff', ...bloom.text.small, fontWeight: '900' },
   hero: {
-    padding: 24,
+    padding: bloom.space.xl,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    gap: 18,
+    gap: bloom.space.lg,
     flexWrap: 'wrap',
   },
   patientBlock: { flex: 1, minWidth: 260 },
-  patientName: { color: bloom.ink, fontSize: 34, fontWeight: '900', lineHeight: 40 },
-  patientMeta: { color: bloom.muted, fontSize: 17, marginTop: 8, fontWeight: '600' },
+  patientName: { color: '#ffffff', ...bloom.text.display, marginTop: bloom.space.lg },
+  patientMeta: { color: '#d8f6eb', ...bloom.text.body, marginTop: bloom.space.sm, fontWeight: '700' },
   bloodBadge: {
-    backgroundColor: bloom.accent,
-    borderRadius: bloom.radius,
-    paddingHorizontal: 18,
-    paddingVertical: 14,
+    backgroundColor: bloom.mint,
+    borderRadius: bloom.radii.card,
+    paddingHorizontal: bloom.space.xl,
+    paddingVertical: bloom.space.lg,
     minWidth: 132,
   },
-  bloodLabel: { color: bloom.primaryInk, fontSize: 12, fontWeight: '900', textTransform: 'uppercase' },
-  bloodValue: { color: bloom.primaryInk, fontSize: 28, fontWeight: '900', marginTop: 4 },
-  grid: { flexDirection: 'row', gap: bloom.gap, flexWrap: 'wrap' },
+  bloodLabel: { color: bloom.primaryInk, ...bloom.text.eyebrow, textTransform: 'uppercase' },
+  bloodValue: { color: bloom.primaryInk, fontSize: 28, lineHeight: 32, fontWeight: '900', letterSpacing: 0, marginTop: bloom.space.xs },
+  grid: { flexDirection: 'row', gap: bloom.space.lg, flexWrap: 'wrap' },
   glanceCard: {
-    padding: 18,
-    gap: 14,
+    padding: bloom.space.xl,
+    gap: bloom.space.lg,
   },
   glanceHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    gap: 14,
+    gap: bloom.space.lg,
     flexWrap: 'wrap',
   },
-  glanceReport: { color: bloom.primaryInk, fontSize: 14, fontWeight: '900' },
-  glanceSummary: { color: bloom.ink, fontSize: 17, lineHeight: 27, fontWeight: '500' },
-  glanceStats: { flexDirection: 'row', gap: 10, flexWrap: 'wrap' },
+  glanceEyebrow: { color: bloom.mint, ...bloom.text.eyebrow, textTransform: 'uppercase', marginBottom: bloom.space.xs },
+  glanceTitle: { color: '#ffffff', ...bloom.text.h1 },
+  glanceReport: { color: '#d8f6eb', ...bloom.text.small, fontWeight: '900' },
+  glanceSummary: { color: '#ffffff', ...bloom.text.body, fontWeight: '700' },
+  glanceStats: { flexDirection: 'row', gap: bloom.space.sm, flexWrap: 'wrap' },
   statPill: {
-    backgroundColor: '#F0F7F4',
-    borderRadius: 14,
+    backgroundColor: bloom.mintSoft,
+    borderRadius: bloom.radii.md,
     borderWidth: 1,
-    borderColor: '#D6E8E0',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    borderColor: bloom.mint,
+    paddingHorizontal: bloom.space.lg,
+    paddingVertical: bloom.space.md,
     minWidth: 128,
   },
-  statPillDanger: { backgroundColor: '#FFF0EE', borderColor: bloom.danger, borderWidth: 2 },
-  statValue: { color: bloom.primaryInk, fontSize: 23, fontWeight: '900' },
-  statLabel: { color: bloom.muted, fontSize: 12, fontWeight: '800', textTransform: 'uppercase' },
+  statPillDanger: { backgroundColor: bloom.dangerSoft, borderColor: bloom.danger, borderWidth: 2 },
+  statValue: { color: bloom.primaryInk, fontSize: 23, lineHeight: 27, fontWeight: '900', letterSpacing: 0 },
+  statLabel: { color: bloom.muted, ...bloom.text.eyebrow, textTransform: 'uppercase' },
   statDanger: { color: bloom.danger },
   allergyAlert: {
-    backgroundColor: '#FFF0EE',
-    borderRadius: 14,
+    backgroundColor: bloom.dangerSoft,
+    borderRadius: bloom.radii.md,
     borderWidth: 2,
     borderColor: bloom.danger,
-    padding: 14,
+    padding: bloom.space.lg,
   },
   allergyAlertLabel: {
     color: bloom.danger,
-    fontSize: 12,
-    fontWeight: '900',
+    ...bloom.text.eyebrow,
     textTransform: 'uppercase',
-    marginBottom: 5,
+    marginBottom: bloom.space.xs,
   },
-  allergyAlertText: { color: '#7A1E15', fontSize: 18, fontWeight: '900', lineHeight: 24 },
-  factGroup: { flex: 1, minWidth: 280, padding: 18 },
-  sectionHeader: { marginTop: 4 },
-  sectionTitle: { color: bloom.ink, fontSize: 19, fontWeight: '900', marginBottom: 12 },
+  allergyAlertText: { color: '#7a1e15', ...bloom.text.h2 },
+  factGroup: { flex: 1, minWidth: 280, padding: bloom.space.xl },
+  sectionHeader: { marginTop: bloom.space.xs },
+  sectionTitle: { color: bloom.ink, ...bloom.text.h2, marginBottom: bloom.space.md },
   dangerTitle: { color: bloom.danger },
-  factList: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  factList: { flexDirection: 'row', flexWrap: 'wrap', gap: bloom.space.sm },
   unavailableWrap: {
     flex: 1,
     backgroundColor: bloom.bg,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 22,
+    padding: bloom.space.xl,
   },
-  unavailable: { width: '100%', maxWidth: 520, gap: 14 },
-  unavailableTitle: { color: bloom.ink, fontSize: 28, fontWeight: '900', textAlign: 'center' },
-  unavailableMessage: { color: bloom.muted, fontSize: 17, lineHeight: 25, textAlign: 'center' },
+  unavailable: { width: '100%', maxWidth: 520, gap: bloom.space.lg },
+  unavailableTitle: { color: bloom.ink, ...bloom.text.h1, textAlign: 'center' },
+  unavailableMessage: { color: bloom.muted, ...bloom.text.body, textAlign: 'center' },
+  waiting: { width: '100%', maxWidth: 520, gap: bloom.space.lg, alignItems: 'center' },
+  waitingTitle: { color: bloom.ink, ...bloom.text.h1, textAlign: 'center' },
+  waitingMessage: { color: bloom.muted, ...bloom.text.body, textAlign: 'center' },
   loadingCenter: {
     position: 'absolute',
     top: 0,
@@ -336,12 +423,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     zIndex: 2,
   },
-  loadingText: { color: bloom.muted, fontSize: 15, fontWeight: '700', marginTop: 12 },
-  skeletonPage: { width: '100%', maxWidth: 1060, alignSelf: 'center', padding: 18, paddingTop: 78, gap: 16 },
-  skeleton: { backgroundColor: '#E8F2EE', borderRadius: bloom.radius },
+  loadingText: { color: bloom.muted, ...bloom.text.small, fontWeight: '700', marginTop: bloom.space.md },
+  skeletonPage: { width: '100%', maxWidth: 1060, alignSelf: 'center', padding: bloom.space.xl, paddingTop: 78, gap: bloom.space.lg },
+  skeleton: { backgroundColor: '#e8f2ee', borderRadius: bloom.radii.card },
   skeletonHero: { height: 150 },
   skeletonBar: { height: 54 },
-  skeletonGrid: { flexDirection: 'row', gap: 16, flexWrap: 'wrap' },
+  skeletonGrid: { flexDirection: 'row', gap: bloom.space.lg, flexWrap: 'wrap' },
   skeletonCard: { flex: 1, minWidth: 260, height: 156 },
   skeletonTimeline: { height: 260 },
 });

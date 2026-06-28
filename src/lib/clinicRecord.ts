@@ -24,6 +24,10 @@ const unavailableCopy: Record<ClinicError, { title: string; message: string }> =
     title: 'This share link is cooling down',
     message: 'Too many recent views. Wait a moment, then ask the patient to share again if needed.',
   },
+  denied: {
+    title: 'The patient declined this request',
+    message: 'Ask the patient to share their record again if you still need access.',
+  },
 };
 
 async function readClinicRecordFromFixture(token: string): Promise<ClinicRecordResult> {
@@ -34,7 +38,7 @@ async function readClinicRecordFromFixture(token: string): Promise<ClinicRecordR
   return fixture as ClinicRecord;
 }
 
-const CLINIC_ERRORS: ClinicError[] = ['invalid', 'expired', 'revoked', 'rate_limited'];
+const CLINIC_ERRORS: ClinicError[] = ['invalid', 'expired', 'revoked', 'rate_limited', 'denied'];
 
 function isClinicError(value: unknown): value is ClinicError {
   return typeof value === 'string' && (CLINIC_ERRORS as string[]).includes(value);
@@ -63,8 +67,15 @@ async function readClinicRecordFromFunction(token: string): Promise<ClinicRecord
       return { error: 'invalid' };
     }
 
-    if (isClinicError((data as { error?: unknown }).error)) {
-      return { error: (data as { error: ClinicError }).error };
+    const body = data as { error?: unknown; status?: unknown };
+
+    if (isClinicError(body.error)) {
+      return { error: body.error as ClinicError };
+    }
+
+    // Consent gate: owner has not approved yet — caller should poll again.
+    if (body.status === 'pending') {
+      return { status: 'pending' };
     }
 
     return data as ClinicRecord;
@@ -92,6 +103,10 @@ export function toClinicViewState(result: ClinicRecordResult): ClinicViewState {
       error: result.error,
       ...unavailableCopy[result.error],
     };
+  }
+
+  if ('status' in result) {
+    return { kind: 'pending' };
   }
 
   return { kind: 'ready', record: result };

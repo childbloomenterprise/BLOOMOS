@@ -14,6 +14,8 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { bloom } from '../../contract/tokens';
+import { Card, FadeIn, GradientPanel, StatusPill } from '../components/Bloom';
 import { useAuth } from '../context/AuthContext';
 import { uploadHealthFile } from '../lib/storage';
 import { supabase } from '../lib/supabase';
@@ -164,222 +166,216 @@ export default function UploadScreen({ onDone, onBack }: Props) {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <View style={styles.header}>
-        <Pressable onPress={onBack} style={styles.backBtn}>
+        <Pressable accessibilityRole="button" onPress={onBack} style={styles.backBtn}>
           <Text style={styles.backText}>← Back</Text>
         </Pressable>
         <Text style={styles.headerTitle}>Add Health Record</Text>
         <View style={{ width: 64 }} />
       </View>
 
-      <ScrollView
-        contentContainerStyle={styles.scroll}
-        keyboardShouldPersistTaps="handled"
-      >
+      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+        <GradientPanel style={styles.uploadHero}>
+          <StatusPill label="Patient vault" tone="dark" />
+          <Text style={styles.heroTitle}>Add one record. Build a lifelong handoff.</Text>
+          <Text style={styles.heroSub}>
+            Upload a report now. You can ask Bloom to explain it right after it saves,
+            then share a clinic-ready view when you need care.
+          </Text>
+        </GradientPanel>
+
         {!picked ? (
-          <View style={styles.section}>
+          <FadeIn>
             <Text style={styles.sectionLabel}>Choose file source</Text>
 
-            {Platform.OS !== 'web' && (
-              <Pressable style={styles.sourceBtn} onPress={pickFromCamera}>
-                <Text style={styles.sourceBtnIcon}>📷</Text>
-                <View>
-                  <Text style={styles.sourceBtnTitle}>Take Photo</Text>
-                  <Text style={styles.sourceBtnSub}>Open camera to photograph a document</Text>
-                </View>
-              </Pressable>
-            )}
+            {Platform.OS !== 'web' ? (
+              <SourceButton label="Camera" title="Take Photo" body="Open camera to photograph a document" onPress={pickFromCamera} />
+            ) : null}
 
-            <Pressable style={styles.sourceBtn} onPress={pickFromGallery}>
-              <Text style={styles.sourceBtnIcon}>🖼️</Text>
-              <View>
-                <Text style={styles.sourceBtnTitle}>Choose from Gallery</Text>
-                <Text style={styles.sourceBtnSub}>Pick a photo already on your device</Text>
-              </View>
-            </Pressable>
-
-            <Pressable style={styles.sourceBtn} onPress={pickDocument}>
-              <Text style={styles.sourceBtnIcon}>📄</Text>
-              <View>
-                <Text style={styles.sourceBtnTitle}>Upload Document</Text>
-                <Text style={styles.sourceBtnSub}>PDF, Word, or text file</Text>
-              </View>
-            </Pressable>
-          </View>
+            <SourceButton label="Image" title="Choose from Gallery" body="Pick a photo already on your device" onPress={pickFromGallery} />
+            <SourceButton label="File" title="Upload Document" body="PDF, Word, or text file" onPress={pickDocument} />
+          </FadeIn>
         ) : (
-          <View style={styles.section}>
-            {picked.type === 'image' ? (
-              <Image source={{ uri: picked.uri }} style={styles.preview} resizeMode="cover" />
-            ) : (
-              <View style={styles.filePreview}>
-                <Text style={styles.filePreviewIcon}>
-                  {picked.type === 'pdf' ? '📄' : '📋'}
-                </Text>
-                <Text style={styles.filePreviewName} numberOfLines={2}>
-                  {picked.name}
-                </Text>
-              </View>
-            )}
-            <Pressable style={styles.changeBtn} onPress={() => setPicked(null)}>
-              <Text style={styles.changeBtnText}>Change file</Text>
-            </Pressable>
-          </View>
-        )}
-
-        {picked && (
-          <View style={styles.section}>
-            <Text style={styles.sectionLabel}>Record details</Text>
-
-            <Text style={styles.inputLabel}>
-              Title <Text style={styles.required}>*</Text>
-            </Text>
-            <TextInput
-              style={styles.input}
-              placeholder="e.g. Blood test results, March 2025"
-              placeholderTextColor="#9AA0A6"
-              value={title}
-              onChangeText={setTitle}
-              editable={!uploading}
-              returnKeyType="next"
-            />
-
-            <Text style={styles.inputLabel}>Notes</Text>
-            <TextInput
-              style={[styles.input, styles.notesInput]}
-              placeholder="Any context about this record…"
-              placeholderTextColor="#9AA0A6"
-              multiline
-              value={notes}
-              onChangeText={setNotes}
-              editable={!uploading}
-            />
-
-            <Text style={styles.inputLabel}>Date recorded</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="YYYY-MM-DD  e.g. 2025-03-15"
-              placeholderTextColor="#9AA0A6"
-              value={recordedAt}
-              onChangeText={setRecordedAt}
-              editable={!uploading}
-              keyboardType="numbers-and-punctuation"
-            />
-
-            {error && <Text style={styles.errorText}>{error}</Text>}
-
-            <Pressable
-              style={[styles.uploadBtn, uploading && styles.uploadBtnDisabled]}
-              onPress={handleUpload}
-              disabled={uploading}
-            >
-              {uploading ? (
-                <>
-                  <ActivityIndicator color="#fff" />
-                  <Text style={styles.uploadBtnText}>Uploading…</Text>
-                </>
+          <FadeIn>
+            <Card style={styles.previewCard}>
+              {picked.type === 'image' ? (
+                <Image source={{ uri: picked.uri }} style={styles.preview} resizeMode="cover" />
               ) : (
-                <Text style={styles.uploadBtnText}>Save Record</Text>
+                <View style={styles.filePreview}>
+                  <Text style={styles.filePreviewIcon}>{picked.type === 'pdf' ? 'PDF' : 'DOC'}</Text>
+                  <Text style={styles.filePreviewName} numberOfLines={2}>
+                    {picked.name}
+                  </Text>
+                </View>
               )}
-            </Pressable>
-          </View>
+              <Pressable accessibilityRole="button" style={styles.changeBtn} onPress={() => setPicked(null)}>
+                <Text style={styles.changeBtnText}>Change file</Text>
+              </Pressable>
+            </Card>
+          </FadeIn>
         )}
+
+        {picked ? (
+          <FadeIn>
+            <Card style={styles.formCard}>
+              <Text style={styles.sectionLabel}>Record details</Text>
+
+              <Text style={styles.inputLabel}>Title <Text style={styles.required}>*</Text></Text>
+              <TextInput
+                style={styles.input}
+                placeholder="e.g. Blood test results, March 2025"
+                placeholderTextColor={bloom.muted}
+                value={title}
+                onChangeText={setTitle}
+                editable={!uploading}
+                returnKeyType="next"
+              />
+
+              <Text style={styles.inputLabel}>Notes</Text>
+              <TextInput
+                style={[styles.input, styles.notesInput]}
+                placeholder="Any context about this record..."
+                placeholderTextColor={bloom.muted}
+                multiline
+                value={notes}
+                onChangeText={setNotes}
+                editable={!uploading}
+              />
+
+              <Text style={styles.inputLabel}>Date recorded</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="YYYY-MM-DD  e.g. 2025-03-15"
+                placeholderTextColor={bloom.muted}
+                value={recordedAt}
+                onChangeText={setRecordedAt}
+                editable={!uploading}
+                keyboardType="numbers-and-punctuation"
+              />
+
+              {error ? <Text style={styles.errorText}>{error}</Text> : null}
+
+              <Pressable
+                accessibilityRole="button"
+                style={[styles.uploadBtn, uploading && styles.uploadBtnDisabled]}
+                onPress={handleUpload}
+                disabled={uploading}
+              >
+                {uploading ? (
+                  <>
+                    <ActivityIndicator color="#fff" />
+                    <Text style={styles.uploadBtnText}>Uploading...</Text>
+                  </>
+                ) : (
+                  <Text style={styles.uploadBtnText}>Save Record</Text>
+                )}
+              </Pressable>
+            </Card>
+          </FadeIn>
+        ) : null}
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
+function SourceButton({
+  label,
+  title,
+  body,
+  onPress,
+}: {
+  label: string;
+  title: string;
+  body: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable accessibilityRole="button" style={styles.sourceBtn} onPress={onPress}>
+      <Text style={styles.sourceBtnIcon}>{label}</Text>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.sourceBtnTitle}>{title}</Text>
+        <Text style={styles.sourceBtnSub}>{body}</Text>
+      </View>
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F5F7FB' },
+  container: { flex: 1, backgroundColor: bloom.bg },
   header: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: bloom.surface,
     paddingTop: Platform.OS === 'ios' ? 60 : 40,
-    paddingBottom: 16,
-    paddingHorizontal: 16,
+    paddingBottom: bloom.space.lg,
+    paddingHorizontal: bloom.space.lg,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    shadowColor: '#1A2B4A',
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
+    ...bloom.elevation.sm,
   },
-  backBtn: { padding: 8, minWidth: 64 },
-  backText: { color: '#1F6F54', fontSize: 15, fontWeight: '500' },
-  headerTitle: { fontSize: 17, fontWeight: '600', color: '#111827' },
-  scroll: { padding: 16, paddingBottom: 60 },
-  section: { marginBottom: 8 },
+  backBtn: { padding: bloom.space.sm, minWidth: 64, minHeight: 44, justifyContent: 'center' },
+  backText: { color: bloom.primaryInk, ...bloom.text.small, fontWeight: '900' },
+  headerTitle: { ...bloom.text.h2, color: bloom.ink },
+  scroll: { padding: bloom.space.lg, paddingBottom: 60 },
+  uploadHero: { padding: bloom.space.xl, marginBottom: bloom.space.xl, gap: bloom.space.md },
+  heroTitle: { color: '#ffffff', ...bloom.text.h1 },
+  heroSub: { color: '#d8f6eb', ...bloom.text.body, fontWeight: '700' },
   sectionLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#6B7280',
+    ...bloom.text.eyebrow,
+    color: bloom.primaryInk,
     textTransform: 'uppercase',
-    letterSpacing: 0.6,
-    marginBottom: 12,
-    marginTop: 8,
+    marginBottom: bloom.space.md,
+    marginTop: bloom.space.sm,
   },
   sourceBtn: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    padding: 18,
+    backgroundColor: bloom.surface,
+    borderRadius: bloom.radii.card,
+    padding: bloom.space.xl,
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 10,
-    gap: 14,
-    shadowColor: '#1A2B4A',
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 1,
+    marginBottom: bloom.space.md,
+    gap: bloom.space.lg,
+    minHeight: 88,
+    borderWidth: 1,
+    borderColor: bloom.hair,
+    ...bloom.elevation.sm,
   },
-  sourceBtnIcon: { fontSize: 26 },
-  sourceBtnTitle: { fontSize: 15, color: '#111827', fontWeight: '600' },
-  sourceBtnSub: { fontSize: 13, color: '#6B7280', marginTop: 2 },
-  preview: {
-    width: '100%',
-    height: 200,
-    borderRadius: 14,
-    backgroundColor: '#E5E7EB',
-    marginBottom: 10,
-  },
-  filePreview: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    padding: 24,
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  filePreviewIcon: { fontSize: 44, marginBottom: 10 },
-  filePreviewName: { fontSize: 14, color: '#374151', textAlign: 'center' },
-  changeBtn: { alignSelf: 'center', marginBottom: 20 },
-  changeBtnText: { color: '#1F6F54', fontSize: 14, fontWeight: '500' },
-  inputLabel: { fontSize: 13, fontWeight: '500', color: '#374151', marginBottom: 6 },
-  required: { color: '#EF4444' },
+  sourceBtnIcon: { color: bloom.primaryInk, ...bloom.text.eyebrow, minWidth: 54, textTransform: 'uppercase' },
+  sourceBtnTitle: { ...bloom.text.title, color: bloom.ink },
+  sourceBtnSub: { ...bloom.text.small, color: bloom.muted, marginTop: 2 },
+  previewCard: { padding: bloom.space.lg, marginBottom: bloom.space.lg },
+  preview: { width: '100%', height: 220, borderRadius: bloom.radii.md, backgroundColor: bloom.hair, marginBottom: bloom.space.md },
+  filePreview: { padding: bloom.space.xl, alignItems: 'center', marginBottom: bloom.space.md },
+  filePreviewIcon: { fontSize: 28, lineHeight: 34, marginBottom: bloom.space.md, color: bloom.primaryInk, fontWeight: '900', letterSpacing: 0 },
+  filePreviewName: { ...bloom.text.small, color: bloom.ink, textAlign: 'center', fontWeight: '700' },
+  changeBtn: { alignSelf: 'center', minHeight: 44, justifyContent: 'center' },
+  changeBtnText: { color: bloom.primaryInk, ...bloom.text.small, fontWeight: '900' },
+  formCard: { padding: bloom.space.xl },
+  inputLabel: { ...bloom.text.small, fontWeight: '800', color: bloom.muted, marginBottom: bloom.space.sm },
+  required: { color: bloom.danger },
   input: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 15,
-    color: '#111827',
-    marginBottom: 14,
-    shadowColor: '#1A2B4A',
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 1 },
-    elevation: 1,
+    backgroundColor: bloom.surface,
+    borderRadius: bloom.radii.md,
+    borderWidth: 1,
+    borderColor: '#dcebe4',
+    paddingHorizontal: bloom.space.lg,
+    paddingVertical: bloom.space.md,
+    ...bloom.text.body,
+    color: bloom.ink,
+    marginBottom: bloom.space.lg,
   },
-  notesInput: { minHeight: 90, textAlignVertical: 'top' },
-  errorText: { color: '#B91C1C', fontSize: 14, marginBottom: 14, lineHeight: 20 },
+  notesInput: { minHeight: 96, textAlignVertical: 'top' },
+  errorText: { color: bloom.danger, ...bloom.text.small, marginBottom: bloom.space.lg, fontWeight: '700' },
   uploadBtn: {
-    backgroundColor: '#1F6F54',
-    borderRadius: 14,
-    paddingVertical: 18,
+    backgroundColor: bloom.primary,
+    borderRadius: bloom.radii.md,
+    paddingVertical: bloom.space.lg,
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'center',
-    gap: 10,
-    marginTop: 4,
+    gap: bloom.space.sm,
+    marginTop: bloom.space.xs,
+    minHeight: 54,
+    ...bloom.elevation.sm,
   },
   uploadBtnDisabled: { opacity: 0.6 },
-  uploadBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '600' },
+  uploadBtnText: { color: '#ffffff', ...bloom.text.title },
 });

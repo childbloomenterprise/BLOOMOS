@@ -1,6 +1,13 @@
 export type ClinicFactType = 'condition' | 'medication' | 'allergy';
 export type ClinicFileType = 'image' | 'pdf' | 'document';
-export type ClinicError = 'invalid' | 'expired' | 'revoked' | 'rate_limited';
+export type ClinicError = 'invalid' | 'expired' | 'revoked' | 'rate_limited' | 'denied';
+
+// While the owner has not yet approved (or denied) the scan, clinic-record returns
+// this instead of the record. The clinic view polls until it flips to a record or
+// a terminal error.
+export interface ClinicPending {
+  status: 'pending';
+}
 
 export interface ClinicPatient {
   fullName: string;
@@ -34,10 +41,11 @@ export interface ClinicRecord {
   viewedCount: number;
 }
 
-export type ClinicRecordResult = ClinicRecord | { error: ClinicError };
+export type ClinicRecordResult = ClinicRecord | ClinicPending | { error: ClinicError };
 
 export type ClinicViewState =
   | { kind: 'ready'; record: ClinicRecord }
+  | { kind: 'pending' }
   | { kind: 'unavailable'; error: ClinicError; title: string; message: string };
 
 export interface ClinicAtAGlance {

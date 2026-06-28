@@ -73,3 +73,19 @@ test('rate-limited token payload becomes cooling-down unavailable state', () => 
     assert.match(state.message, /Too many recent views/i);
   }
 });
+
+test('pending consent payload becomes pending state (keep polling)', () => {
+  const state = toClinicViewState({ status: 'pending' });
+
+  assert.equal(state.kind, 'pending');
+});
+
+test('denied token payload becomes declined unavailable state', () => {
+  const state = toClinicViewState({ error: 'denied' });
+
+  assert.equal(state.kind, 'unavailable');
+  if (state.kind === 'unavailable') {
+    assert.equal(state.error, 'denied');
+    assert.match(state.title, /declined/i);
+  }
+});

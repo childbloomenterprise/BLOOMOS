@@ -8,6 +8,8 @@ import {
   Text,
   View,
 } from 'react-native';
+import { bloom } from '../../contract/tokens';
+import { Card, Disclaimer, ExplainedBadge, FadeIn, GradientPanel, SkeletonBlock, StatusPill } from '../components/Bloom';
 import { supabase } from '../lib/supabase';
 
 interface Props {
@@ -33,7 +35,6 @@ export default function ExplainScreen({ recordId, recordTitle, onBack }: Props) 
     let cancelled = false;
 
     async function loadOrExplain() {
-      // 1. Already explained once? Show the saved result instantly — no AI call.
       const { data: record } = await supabase
         .from('health_records')
         .select('ai_summary, ai_questions, ai_status')
@@ -53,8 +54,6 @@ export default function ExplainScreen({ recordId, recordTitle, onBack }: Props) 
         return;
       }
 
-      // 2. Otherwise call the AI. The function persists the result on success,
-      //    so the next visit takes the instant path above.
       const { data, error } = await supabase.functions.invoke('explain-report', {
         body: { record_id: recordId },
       });
@@ -65,7 +64,7 @@ export default function ExplainScreen({ recordId, recordTitle, onBack }: Props) 
         const message =
           data?.error ??
           error?.message ??
-          "Couldn't read this one — try a clearer photo or PDF.";
+          "Couldn't read this one - try a clearer photo or PDF.";
         setState({ kind: 'error', message });
         return;
       }
@@ -81,9 +80,8 @@ export default function ExplainScreen({ recordId, recordTitle, onBack }: Props) 
 
   return (
     <View style={styles.container}>
-      {/* Header */}
       <View style={styles.header}>
-        <Pressable onPress={onBack} style={styles.backBtn}>
+        <Pressable accessibilityRole="button" onPress={onBack} style={styles.backBtn}>
           <Text style={styles.backText}>← Back</Text>
         </Pressable>
         <Text style={styles.headerTitle} numberOfLines={1}>
@@ -92,204 +90,109 @@ export default function ExplainScreen({ recordId, recordTitle, onBack }: Props) 
         <View style={styles.headerRight} />
       </View>
 
-      {/* Body */}
-      {state.kind === 'loading' && (
+      {state.kind === 'loading' ? (
         <View style={styles.centered}>
-          <ActivityIndicator size="large" color="#1F6F54" />
-          <Text style={styles.loadingText}>Reading your report…</Text>
-          <Text style={styles.loadingSubtext}>This usually takes 5–10 seconds.</Text>
+          <ActivityIndicator size="large" color={bloom.primary} />
+          <Text style={styles.loadingText}>Reading your report...</Text>
+          <Text style={styles.loadingSubtext}>Bloom is turning clinical language into plain English.</Text>
+          <View style={styles.loaderStack}>
+            <SkeletonBlock style={styles.loaderLine} />
+            <SkeletonBlock style={styles.loaderLineWide} />
+            <SkeletonBlock style={styles.loaderLine} />
+          </View>
         </View>
-      )}
+      ) : null}
 
-      {state.kind === 'error' && (
+      {state.kind === 'error' ? (
         <View style={styles.centered}>
-          <Text style={styles.errorEmoji}>🔍</Text>
-          <Text style={styles.errorTitle}>Couldn't read this one</Text>
+          <Text style={styles.errorTitle}>Could not read this one</Text>
           <Text style={styles.errorBody}>{state.message}</Text>
-          <Pressable onPress={onBack} style={styles.retryBtn}>
-            <Text style={styles.retryBtnText}>← Go back</Text>
+          <Pressable accessibilityRole="button" onPress={onBack} style={styles.retryBtn}>
+            <Text style={styles.retryBtnText}>Go back</Text>
           </Pressable>
         </View>
-      )}
+      ) : null}
 
-      {state.kind === 'success' && (
+      {state.kind === 'success' ? (
         <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-          {/* Record title */}
-          <Text style={styles.recordTitle}>{recordTitle}</Text>
+          <FadeIn>
+            <Text style={styles.recordTitle}>{recordTitle}</Text>
 
-          {/* Explanation card */}
-          <View style={styles.card}>
-            <Text style={styles.sectionLabel}>What this means</Text>
-            <Text style={styles.explanationText}>{state.result.explanation}</Text>
-          </View>
+            <GradientPanel style={styles.heroCard}>
+              <StatusPill label="Plain-language AI" tone="dark" />
+              <Text style={styles.heroLabel}>What this means</Text>
+              <ExplainedBadge />
+              <Text style={styles.explanationText}>{state.result.explanation}</Text>
+              <Disclaimer />
+            </GradientPanel>
 
-          {/* Doctor questions card */}
-          <View style={styles.card}>
-            <Text style={styles.sectionLabel}>Questions to ask your doctor</Text>
-            {state.result.doctor_questions.map((q, i) => (
-              <View key={i} style={styles.questionRow}>
-                <Text style={styles.questionNumber}>{i + 1}</Text>
-                <Text style={styles.questionText}>{q}</Text>
-              </View>
-            ))}
-          </View>
-
-          {/* Disclaimer — always visible */}
-          <View style={styles.disclaimer}>
-            <Text style={styles.disclaimerIcon}>ℹ️</Text>
-            <Text style={styles.disclaimerText}>
-              <Text style={styles.disclaimerStrong}>
-                Explanation, not medical advice — discuss with your doctor.
-              </Text>
-              {'\n'}Please review these results with your doctor before making any decisions.
-            </Text>
-          </View>
+            <Card style={styles.card}>
+              <Text style={styles.sectionLabel}>Questions to ask your doctor</Text>
+              {state.result.doctor_questions.map((q, i) => (
+                <View key={q} style={styles.questionRow}>
+                  <Text style={styles.questionNumber}>{i + 1}</Text>
+                  <Text style={styles.questionText}>{q}</Text>
+                </View>
+              ))}
+            </Card>
+          </FadeIn>
         </ScrollView>
-      )}
+      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F5F7FB' },
-
-  // Header
+  container: { flex: 1, backgroundColor: bloom.bg },
   header: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: bloom.surface,
     paddingTop: Platform.OS === 'ios' ? 60 : 40,
-    paddingBottom: 16,
-    paddingHorizontal: 16,
+    paddingBottom: bloom.space.lg,
+    paddingHorizontal: bloom.space.lg,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    shadowColor: '#1A2B4A',
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
+    ...bloom.elevation.sm,
   },
-  backBtn: { padding: 8, minWidth: 64 },
-  backText: { color: '#1F6F54', fontSize: 15, fontWeight: '500' },
-  headerTitle: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: '#111827',
-    flex: 1,
-    textAlign: 'center',
-  },
+  backBtn: { padding: bloom.space.sm, minWidth: 64, minHeight: 44, justifyContent: 'center' },
+  backText: { color: bloom.primaryInk, ...bloom.text.small, fontWeight: '900' },
+  headerTitle: { ...bloom.text.h2, color: bloom.ink, flex: 1, textAlign: 'center' },
   headerRight: { minWidth: 64 },
-
-  // Loading
-  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 32 },
-  loadingText: {
-    marginTop: 20,
-    fontSize: 17,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  loadingSubtext: {
-    marginTop: 6,
-    fontSize: 13,
-    color: '#9CA3AF',
-    textAlign: 'center',
-  },
-
-  // Error
-  errorEmoji: { fontSize: 48, marginBottom: 16 },
-  errorTitle: { fontSize: 18, fontWeight: '700', color: '#111827', marginBottom: 8 },
-  errorBody: {
-    fontSize: 14,
-    color: '#6B7280',
-    textAlign: 'center',
-    lineHeight: 22,
-    marginBottom: 24,
-  },
-  retryBtn: { paddingVertical: 8 },
-  retryBtnText: { color: '#1F6F54', fontSize: 15, fontWeight: '500' },
-
-  // Scroll content
-  scroll: { padding: 20, paddingBottom: 60 },
-  recordTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#111827',
-    marginBottom: 16,
-    lineHeight: 28,
-  },
-
-  // Cards
-  card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    padding: 20,
-    marginBottom: 14,
-    shadowColor: '#1A2B4A',
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 1,
-  },
+  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: bloom.space.xxl },
+  loadingText: { marginTop: bloom.space.xl, ...bloom.text.h1, color: bloom.ink },
+  loadingSubtext: { marginTop: bloom.space.sm, ...bloom.text.small, color: bloom.muted, textAlign: 'center', maxWidth: 360 },
+  loaderStack: { width: '100%', maxWidth: 420, marginTop: 28 },
+  loaderLine: { height: 18, marginBottom: bloom.space.sm },
+  loaderLineWide: { height: 18, marginBottom: bloom.space.sm, width: '86%' },
+  errorTitle: { ...bloom.text.h1, color: bloom.ink, marginBottom: bloom.space.sm },
+  errorBody: { ...bloom.text.body, color: bloom.muted, textAlign: 'center', marginBottom: bloom.space.xl },
+  retryBtn: { minHeight: 44, justifyContent: 'center', paddingHorizontal: bloom.space.lg },
+  retryBtnText: { color: bloom.primaryInk, ...bloom.text.small, fontWeight: '900' },
+  scroll: { padding: bloom.space.xl, paddingBottom: 60 },
+  recordTitle: { ...bloom.text.h1, color: bloom.ink, marginBottom: bloom.space.lg },
+  heroCard: { padding: bloom.space.xl, marginBottom: bloom.space.lg, gap: bloom.space.md },
+  card: { padding: bloom.space.xl, marginBottom: bloom.space.lg },
   sectionLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#1F6F54',
-    letterSpacing: 0.8,
+    ...bloom.text.eyebrow,
+    color: bloom.primaryInk,
     textTransform: 'uppercase',
-    marginBottom: 12,
+    marginBottom: bloom.space.md,
   },
-
-  // Explanation
-  explanationText: {
-    fontSize: 15,
-    color: '#1F2937',
-    lineHeight: 25,
-  },
-
-  // Doctor questions
-  questionRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: 14,
-  },
+  heroLabel: { ...bloom.text.h1, color: '#ffffff' },
+  explanationText: { ...bloom.text.body, color: '#ffffff', fontWeight: '700' },
+  questionRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: bloom.space.lg },
   questionNumber: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: '#E8F5EF',
-    color: '#1F6F54',
-    fontSize: 12,
-    fontWeight: '700',
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: bloom.accent,
+    color: bloom.primaryInk,
+    ...bloom.text.small,
+    fontWeight: '900',
     textAlign: 'center',
-    lineHeight: 24,
-    marginRight: 12,
-    marginTop: 1,
+    lineHeight: 28,
+    marginRight: bloom.space.md,
     overflow: 'hidden',
   },
-  questionText: {
-    flex: 1,
-    fontSize: 15,
-    color: '#1F2937',
-    lineHeight: 24,
-  },
-
-  // Disclaimer
-  disclaimer: {
-    flexDirection: 'row',
-    backgroundColor: '#FFF7ED',
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#FED7AA',
-    alignItems: 'flex-start',
-    marginTop: 4,
-  },
-  disclaimerIcon: { fontSize: 16, marginRight: 10, marginTop: 1 },
-  disclaimerText: {
-    flex: 1,
-    fontSize: 13,
-    color: '#92400E',
-    lineHeight: 20,
-    fontWeight: '500',
-  },
-  disclaimerStrong: { fontWeight: '700' },
+  questionText: { flex: 1, ...bloom.text.body, color: bloom.ink, fontWeight: '600' },
 });
